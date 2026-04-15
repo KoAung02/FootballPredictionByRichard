@@ -23,7 +23,7 @@ export default async function LeaguesPage() {
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-10">
         <div className="mb-8">
           <h1 className="text-3xl font-bold text-gray-900 dark:text-white">Leagues</h1>
-          <p className="text-gray-500 mt-2 dark:text-slate-400">Top 5 European leagues</p>
+          <p className="text-gray-500 mt-2 dark:text-slate-400">Top 5 European leagues + UEFA Champions League</p>
         </div>
 
         {leagues.length === 0 ? (
