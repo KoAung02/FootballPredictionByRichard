@@ -16,12 +16,12 @@ const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL! });
 const prisma = new PrismaClient({ adapter, log: ["warn", "error"] });
 
 const TARGET_LEAGUES = [
+  { id: COMPETITION_NUMERIC_IDS.CL,  code: "CL"  as const, name: "UEFA Champions League", country: "Europe",  slug: "champions-league" },
   { id: COMPETITION_NUMERIC_IDS.PL, code: "PL" as const, name: "Premier League", country: "England", slug: "premier-league" },
   { id: COMPETITION_NUMERIC_IDS.PD, code: "PD" as const, name: "La Liga",        country: "Spain",   slug: "la-liga"        },
   { id: COMPETITION_NUMERIC_IDS.SA, code: "SA" as const, name: "Serie A",        country: "Italy",   slug: "serie-a"        },
   { id: COMPETITION_NUMERIC_IDS.BL1, code: "BL1" as const, name: "Bundesliga",  country: "Germany", slug: "bundesliga"     },
-  { id: COMPETITION_NUMERIC_IDS.FL1, code: "FL1" as const, name: "Ligue 1",             country: "France",  slug: "ligue-1"          },
-  { id: COMPETITION_NUMERIC_IDS.CL,  code: "CL"  as const, name: "UEFA Champions League", country: "Europe",  slug: "champions-league" },
+  { id: COMPETITION_NUMERIC_IDS.FL1, code: "FL1" as const, name: "Ligue 1",     country: "France",  slug: "ligue-1"        },
 ] as const;
 
 const CURRENT_SEASON = 2025;
@@ -54,7 +54,7 @@ async function seedTeams() {
     for (const t of teams) {
       await prisma.team.upsert({
         where: { apiFootballId: t.id },
-        update: { name: t.name, shortName: t.shortName || t.tla || null, logo: t.crest || null, venue: t.venue || null },
+        update: { name: t.name, shortName: t.shortName || t.tla || null, logo: t.crest || null, leagueId: league.id, venue: t.venue || null },
         create: { name: t.name, shortName: t.shortName || t.tla || null, logo: t.crest || null, leagueId: league.id, apiFootballId: t.id, venue: t.venue || null, eloRating: 1500 },
       });
     }
