@@ -1,0 +1,196 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model League {
+  id             Int       @id @default(autoincrement())
+  name           String
+  country        String
+  slug           String    @unique
+  apiFootballId  Int       @unique
+  logo           String?
+  season         Int
+  avgGoalsPerGame Float?
+  homeWinRate    Float?
+  drawRate       Float?
+  awayWinRate    Float?
+  teams          Team[]
+  matches        Match[]
+  updatedAt      DateTime  @updatedAt
+}
+
+model Team {
+  id             Int         @id @default(autoincrement())
+  name           String
+  shortName      String?
+  logo           String?
+  leagueId       Int
+  league         League      @relation(fields: [leagueId], references: [id])
+  apiFootballId  Int         @unique
+  venue          String?
+  eloRating      Float       @default(1500)
+  homeMatches    Match[]     @relation("HomeTeam")
+  awayMatches    Match[]     @relation("AwayTeam")
+  stats          TeamStats[]
+  updatedAt      DateTime    @updatedAt
+}
+
+model Match {
+  id             Int         @id @default(autoincrement())
+  leagueId       Int
+  league         League      @relation(fields: [leagueId], references: [id])
+  homeTeamId     Int
+  homeTeam       Team        @relation("HomeTeam", fields: [homeTeamId], references: [id])
+  awayTeamId     Int
+  awayTeam       Team        @relation("AwayTeam", fields: [awayTeamId], references: [id])
+  matchDate      DateTime
+  status         MatchStatus @default(SCHEDULED)
+  homeGoals      Int?
+  awayGoals      Int?
+  round          String?
+  apiFootballId  Int         @unique
+  odds           Odds[]
+  tips           Tip[]
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+}
+
+enum MatchStatus {
+  SCHEDULED
+  LIVE
+  FINISHED
+  POSTPONED
+  CANCELLED
+}
+
+model TeamStats {
+  id               Int      @id @default(autoincrement())
+  teamId           Int
+  team             Team     @relation(fields: [teamId], references: [id])
+  season           Int
+  matchesPlayed    Int      @default(0)
+  wins             Int      @default(0)
+  draws            Int      @default(0)
+  losses           Int      @default(0)
+  goalsFor         Int      @default(0)
+  goalsAgainst     Int      @default(0)
+  cleanSheets      Int      @default(0)
+  avgPossession    Float?
+  avgShotsOnTarget Float?
+  homeWins         Int      @default(0)
+  homeDraws        Int      @default(0)
+  homeLosses       Int      @default(0)
+  homeGoalsFor     Int      @default(0)
+  homeGoalsAgainst Int      @default(0)
+  awayWins         Int      @default(0)
+  awayDraws        Int      @default(0)
+  awayLosses       Int      @default(0)
+  awayGoalsFor     Int      @default(0)
+  awayGoalsAgainst Int      @default(0)
+  form             String?
+  xG               Float?
+  xGA              Float?
+  bttsRate         Float?
+  over25Rate       Float?
+  updatedAt        DateTime @updatedAt
+
+  @@unique([teamId, season])
+}
+
+model HeadToHead {
+  id           Int      @id @default(autoincrement())
+  team1Id      Int
+  team2Id      Int
+  totalMatches Int
+  team1Wins    Int
+  team2Wins    Int
+  draws        Int
+  team1Goals   Int
+  team2Goals   Int
+  avgGoals     Float
+  lastMatches  Json
+  updatedAt    DateTime @updatedAt
+
+  @@unique([team1Id, team2Id])
+}
+
+model Odds {
+  id        Int    @id @default(autoincrement())
+  matchId   Int
+  match     Match  @relation(fields: [matchId], references: [id])
+  bookmaker String
+  market    String
+  homeWin   Float?
+  draw      Float?
+  awayWin   Float?
+  overLine  Float?
+  overOdds  Float?
+  underOdds Float?
+  bttsYes   Float?
+  bttsNo    Float?
+  fetchedAt DateTime @default(now())
+
+  @@index([matchId, market])
+}
+
+model Tip {
+  id                    Int       @id @default(autoincrement())
+  matchId               Int
+  match                 Match     @relation(fields: [matchId], references: [id])
+  tipType               String
+  prediction            String
+  confidence            Float
+  calculatedProbability Float
+  impliedProbability    Float?
+  valueRating           Float
+  bestOdds              Float?
+  bestBookmaker         String
+  suggestedStake        Int
+  reasoning             Json
+  modelBreakdown        Json
+  result                TipResult @default(PENDING)
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  @@index([matchId])
+}
+
+enum TipResult {
+  PENDING
+  WON
+  LOST
+  VOID
+  HALF_WON
+  HALF_LOST
+}
+
+model EloHistory {
+  id         Int      @id @default(autoincrement())
+  teamId     Int
+  rating     Float
+  matchId    Int
+  change     Float
+  recordedAt DateTime @default(now())
+
+  @@index([teamId])
+}
+
+model ModelPerformance {
+  id               Int      @id @default(autoincrement())
+  modelName        String
+  market           String
+  totalPredictions Int
+  correct          Int
+  accuracy         Float
+  roi              Float
+  brierScore       Float?
+  logLoss          Float?
+  period           String
+  createdAt        DateTime @default(now())
+
+  @@unique([modelName, market, period])
+}
