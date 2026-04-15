@@ -54,7 +54,7 @@ async function seedTeams() {
     for (const t of teams) {
       await prisma.team.upsert({
         where: { apiFootballId: t.id },
-        update: { name: t.name, shortName: t.shortName || t.tla || null, logo: t.crest || null, leagueId: league.id, venue: t.venue || null },
+        update: { name: t.name, shortName: t.shortName || t.tla || null, logo: t.crest || null, venue: t.venue || null },
         create: { name: t.name, shortName: t.shortName || t.tla || null, logo: t.crest || null, leagueId: league.id, apiFootballId: t.id, venue: t.venue || null, eloRating: 1500 },
       });
     }
