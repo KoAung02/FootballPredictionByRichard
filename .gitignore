@@ -46,3 +46,6 @@ prediction-engine/__pycache__/
 prediction-engine/**/__pycache__/
 prediction-engine/**/*.pyc
 *.pkl
+
+# Database dumps
+*.sql
