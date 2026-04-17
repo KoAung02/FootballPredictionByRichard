@@ -10,6 +10,7 @@ FootballEdge fetches live fixture data, team statistics, and bookmaker odds via 
 
 Three services run together:
 
+**Local development**
 ```
 ┌─────────────────────┐     HTTP      ┌──────────────────────────┐
 │  Next.js 16 App     │ ──────────── ▶ │  Python FastAPI Engine   │
@@ -28,6 +29,25 @@ Three services run together:
 └──────────────────────┘
 ```
 
+**Production**
+```
+┌─────────────────────┐     HTTP      ┌──────────────────────────┐
+│  Next.js 16 App     │ ──────────── ▶ │  Python FastAPI Engine   │
+│  (Vercel)           │               │  (Railway)               │
+│                     │               │                          │
+│  • UI / API routes  │               │  • ML model (LR blend)   │
+│  • Cron jobs        │               │  • Expected goals calc   │
+│  • Prisma ORM       │               │  • Value bet detector    │
+└────────┬────────────┘               │  • Tip generator         │
+         │                            └──────────────────────────┘
+         │ Prisma / ioredis
+         ▼
+┌──────────────────────┐
+│  Neon PostgreSQL     │
+│  + Upstash Redis     │
+└──────────────────────┘
+```
+
 ## Tech Stack
 
 | Layer | Technology |
@@ -35,9 +55,10 @@ Three services run together:
 | Frontend / Backend | Next.js 16.2, React 19, TypeScript |
 | Styling | Tailwind CSS v4 |
 | ORM | Prisma 7.6 |
-| Database | PostgreSQL (Homebrew) |
-| Cache | Redis (Homebrew, ioredis) |
+| Database | PostgreSQL — Neon (prod) / Homebrew (local) |
+| Cache | Redis — Upstash (prod) / Homebrew (local), ioredis |
 | Prediction engine | Python 3, FastAPI, scikit-learn 1.6 |
+| Hosting | Vercel (Next.js), Railway (Python engine) |
 | Charts | Recharts |
 | External data | football-data.org, The Odds API |
 
