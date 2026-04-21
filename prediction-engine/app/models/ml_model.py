@@ -1,16 +1,16 @@
 """
 Football ML Prediction Model
 
-Uses Logistic Regression (scikit-learn) trained on finished match results.
+Uses XGBoost trained on finished match results.
 At prediction time the model's probabilities are blended with market-implied
 probabilities so the result respects both statistical signal and bookmaker wisdom.
 
 Architecture
 ────────────
   Three binary/multi-class classifiers:
-    • _result_clf  : Home / Draw / Away  (3-class LR)
-    • _ou_clf      : Over 2.5 / Under    (binary LR)
-    • _btts_clf    : BTTS Yes / No       (binary LR)
+    • _result_clf  : Home / Draw / Away  (3-class XGBoost)
+    • _ou_clf      : Over 2.5 / Under    (binary XGBoost)
+    • _btts_clf    : BTTS Yes / No       (binary XGBoost)
 
   Training data  : finished matches (home_stats, away_stats, result, goals)
   Prediction     : blend(ML_prob, implied_prob)  — weighted 55 / 45 by default
@@ -22,9 +22,7 @@ import pickle
 from typing import Dict, List, Optional
 
 import numpy as np
-from sklearn.linear_model import LogisticRegression
-from sklearn.pipeline import Pipeline
-from sklearn.preprocessing import StandardScaler
+from xgboost import XGBClassifier
 
 from app.services.feature_engineer import build_features
 
@@ -76,19 +74,22 @@ class FootballMLModel:
 
         X = np.array(X)
 
-        def _make_pipeline() -> Pipeline:
-            return Pipeline([
-                ("scaler", StandardScaler()),
-                ("clf",    LogisticRegression(
-                    C=0.3,           # moderate regularisation — keeps variance low with ~40 samples
-                    max_iter=1000,
-                    random_state=42,
-                    multi_class="auto",
-                    solver="lbfgs",
-                )),
-            ])
+        def _make_pipeline(objective="binary:logistic", num_class=None):
+            params = dict(
+                n_estimators=100,
+                max_depth=3,
+                learning_rate=0.1,
+                subsample=0.8,
+                colsample_bytree=0.8,
+                eval_metric="logloss",
+                random_state=42,
+                objective=objective,
+            )
+            if num_class:
+                params["num_class"] = num_class
+            return XGBClassifier(**params)
 
-        self._result_clf = _make_pipeline()
+        self._result_clf = _make_pipeline(objective="multi:softprob", num_class=3)
         self._result_clf.fit(X, y_result)
 
         self._ou_clf = _make_pipeline()
@@ -129,19 +130,19 @@ class FootballMLModel:
 
         # ── 1X2 ──────────────────────────────────────────────────────────────
         res_proba  = self._result_clf.predict_proba(feat)[0]
-        res_classes = list(self._result_clf.classes_)
+        res_classes = list(self._result_clf.classes_) if hasattr(self._result_clf, "classes_") else ["A", "D", "H"]
         ml_home = res_proba[res_classes.index("H")] if "H" in res_classes else 0.45
         ml_draw = res_proba[res_classes.index("D")] if "D" in res_classes else 0.25
         ml_away = res_proba[res_classes.index("A")] if "A" in res_classes else 0.30
 
         # ── Over / Under 2.5 ─────────────────────────────────────────────────
         ou_proba   = self._ou_clf.predict_proba(feat)[0]
-        ou_classes = list(self._ou_clf.classes_)
+        ou_classes = list(self._ou_clf.classes_) if hasattr(self._ou_clf, "classes_") else [0, 1]
         ml_over25  = ou_proba[ou_classes.index(1)] if 1 in ou_classes else 0.50
 
         # ── BTTS ─────────────────────────────────────────────────────────────
         bt_proba   = self._btts_clf.predict_proba(feat)[0]
-        bt_classes = list(self._btts_clf.classes_)
+        bt_classes = list(self._btts_clf.classes_) if hasattr(self._btts_clf, "classes_") else [0, 1]
         ml_btts    = bt_proba[bt_classes.index(1)] if 1 in bt_classes else 0.50
 
         # ── Blend: ML (1-w) + Market (w) ────────────────────────────────────
