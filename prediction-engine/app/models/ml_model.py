@@ -22,6 +22,7 @@ import pickle
 from typing import Dict, List, Optional
 
 import numpy as np
+from sklearn.preprocessing import LabelEncoder
 from xgboost import XGBClassifier
 
 from app.services.feature_engineer import build_features
@@ -39,9 +40,10 @@ class FootballMLModel:
     """Trained-on-demand Logistic Regression model for match outcome prediction."""
 
     def __init__(self):
-        self._result_clf: Optional[Pipeline] = None
-        self._ou_clf:     Optional[Pipeline] = None
-        self._btts_clf:   Optional[Pipeline] = None
+        self._result_clf: Optional[XGBClassifier] = None
+        self._ou_clf:     Optional[XGBClassifier] = None
+        self._btts_clf:   Optional[XGBClassifier] = None
+        self._label_enc:  LabelEncoder = LabelEncoder()
         self._trained    = False
         self._n_samples  = 0
         self._load()
@@ -73,8 +75,9 @@ class FootballMLModel:
             y_btts.append(1 if m["home_goals"] > 0 and m["away_goals"] > 0 else 0)# btts yes
 
         X = np.array(X)
+        y_result_enc = self._label_enc.fit_transform(y_result)  # A→0, D→1, H→2
 
-        def _make_pipeline(objective="binary:logistic", num_class=None):
+        def _make_clf(objective="binary:logistic", num_class=None):
             params = dict(
                 n_estimators=100,
                 max_depth=3,
@@ -89,13 +92,13 @@ class FootballMLModel:
                 params["num_class"] = num_class
             return XGBClassifier(**params)
 
-        self._result_clf = _make_pipeline(objective="multi:softprob", num_class=3)
-        self._result_clf.fit(X, y_result)
+        self._result_clf = _make_clf(objective="multi:softprob", num_class=3)
+        self._result_clf.fit(X, y_result_enc)
 
-        self._ou_clf = _make_pipeline()
+        self._ou_clf = _make_clf()
         self._ou_clf.fit(X, y_ou)
 
-        self._btts_clf = _make_pipeline()
+        self._btts_clf = _make_clf()
         self._btts_clf.fit(X, y_btts)
 
         self._trained   = True
@@ -129,11 +132,12 @@ class FootballMLModel:
         feat = build_features(home_stats, away_stats, h2h).reshape(1, -1)
 
         # ── 1X2 ──────────────────────────────────────────────────────────────
-        res_proba  = self._result_clf.predict_proba(feat)[0]
-        res_classes = list(self._result_clf.classes_) if hasattr(self._result_clf, "classes_") else ["A", "D", "H"]
-        ml_home = res_proba[res_classes.index("H")] if "H" in res_classes else 0.45
-        ml_draw = res_proba[res_classes.index("D")] if "D" in res_classes else 0.25
-        ml_away = res_proba[res_classes.index("A")] if "A" in res_classes else 0.30
+        res_proba   = self._result_clf.predict_proba(feat)[0]
+        # classes_ are numeric (0,1,2); map back via label_enc: A→0, D→1, H→2
+        classes     = list(self._label_enc.classes_)  # ['A', 'D', 'H']
+        ml_away = res_proba[classes.index("A")] if "A" in classes else 0.30
+        ml_draw = res_proba[classes.index("D")] if "D" in classes else 0.25
+        ml_home = res_proba[classes.index("H")] if "H" in classes else 0.45
 
         # ── Over / Under 2.5 ─────────────────────────────────────────────────
         ou_proba   = self._ou_clf.predict_proba(feat)[0]
@@ -254,10 +258,11 @@ class FootballMLModel:
         try:
             with open(MODEL_PATH, "wb") as f:
                 pickle.dump({
-                    "result": self._result_clf,
-                    "ou":     self._ou_clf,
-                    "btts":   self._btts_clf,
-                    "n":      self._n_samples,
+                    "result":    self._result_clf,
+                    "ou":        self._ou_clf,
+                    "btts":      self._btts_clf,
+                    "n":         self._n_samples,
+                    "label_enc": self._label_enc,
                 }, f)
         except Exception:
             pass
@@ -272,6 +277,7 @@ class FootballMLModel:
             self._ou_clf     = data["ou"]
             self._btts_clf   = data["btts"]
             self._n_samples  = data["n"]
+            self._label_enc  = data.get("label_enc", LabelEncoder())
             self._trained    = True
         except Exception:
             pass
