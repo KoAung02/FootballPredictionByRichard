@@ -16,7 +16,7 @@ Three services run together:
 │  Next.js 16 App     │ ──────────── ▶ │  Python FastAPI Engine   │
 │  (port 3000)        │               │  (port 8000)             │
 │                     │               │                          │
-│  • UI / API routes  │               │  • ML model (LR blend)   │
+│  • UI / API routes  │               │  • ML model (XGBoost)    │
 │  • Cron jobs        │               │  • Expected goals calc   │
 │  • Prisma ORM       │               │  • Value bet detector    │
 └────────┬────────────┘               │  • Tip generator         │
@@ -35,7 +35,7 @@ Three services run together:
 │  Next.js 16 App     │ ──────────── ▶ │  Python FastAPI Engine   │
 │  (Vercel)           │               │  (Railway)               │
 │                     │               │                          │
-│  • UI / API routes  │               │  • ML model (LR blend)   │
+│  • UI / API routes  │               │  • ML model (XGBoost)    │
 │  • Cron jobs        │               │  • Expected goals calc   │
 │  • Prisma ORM       │               │  • Value bet detector    │
 └────────┬────────────┘               │  • Tip generator         │
@@ -57,7 +57,7 @@ Three services run together:
 | ORM | Prisma 7.6 |
 | Database | PostgreSQL — Neon (prod) / Homebrew (local) |
 | Cache | Redis — Upstash (prod) / Homebrew (local), ioredis |
-| Prediction engine | Python 3, FastAPI, scikit-learn 1.6 |
+| Prediction engine | Python 3, FastAPI, XGBoost 2.1, scikit-learn 1.6 |
 | Hosting | Vercel (Next.js), Railway (Python engine) |
 | Charts | Recharts |
 | External data | football-data.org, The Odds API |
@@ -165,13 +165,13 @@ curl http://localhost:3000/api/crons/update-results
 
 ### Model
 
-The engine uses **Logistic Regression** (scikit-learn) with three binary/multi-class classifiers:
+The engine uses **XGBoost** (scikit-learn compatible) with three binary/multi-class classifiers:
 
-- `result_clf` — Home / Draw / Away (3-class)
+- `result_clf` — Home / Draw / Away (3-class, `multi:softprob`)
 - `ou_clf` — Over 2.5 goals / Under (binary)
 - `btts_clf` — Both teams score Yes / No (binary, used internally)
 
-Each classifier is wrapped in a `StandardScaler → LogisticRegression(C=0.3)` pipeline. Predictions are a **50/50 blend** of the ML output and market-implied probabilities derived from bookmaker odds.
+Each classifier uses `n_estimators=100, max_depth=3, learning_rate=0.1`. Predictions are a **50/50 blend** of the ML output and market-implied probabilities derived from bookmaker odds.
 
 ### Tip selection logic
 
