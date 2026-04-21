@@ -19,6 +19,7 @@ async function getLeague(slug: string) {
     where: { slug },
     include: {
       matches: {
+        where: { status: { in: ["SCHEDULED", "LIVE"] } },
         include: {
           homeTeam: true,
           awayTeam: true,
