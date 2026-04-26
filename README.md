@@ -4,7 +4,7 @@ A full-stack football betting intelligence platform that combines statistical mo
 
 ## Overview
 
-FootballEdge fetches live fixture data, team statistics, and bookmaker odds via external APIs, then runs them through an ML prediction engine to surface high-confidence tips with value ratings. Tips cover match result (1X2 or double chance) and Over/Under 2.5 goals markets across the top European leagues. A performance dashboard tracks P&L and ROI across all settled tips.
+FootballEdge fetches live fixture data, team statistics, and bookmaker odds via external APIs, then runs them through an ML prediction engine to surface high-confidence tips with value ratings. Tips cover match result (1X2 or double chance) and Over/Under 2.5 goals markets across the top European leagues. A performance dashboard tracks win rate across all settled tips.
 
 ## Architecture
 
@@ -182,7 +182,7 @@ For the match result market, the engine picks between an outright result and a d
 - Draw probability **< 22%** → recommend outright **Home Win / Away Win**
 - Draw is the single most likely outcome → recommend **Draw**
 
-Over/Under 2.5 is generated when either side exceeds 55% probability.
+Over/Under 2.5 is generated when either side exceeds 65% probability.
 
 ### Feature vector (21 features)
 
@@ -214,7 +214,7 @@ Odds are **excluded from the feature vector** so training data (historical match
 
 The model persists to `/tmp/footballedge_ml.pkl` and auto-loads on engine restart. Requires ≥ 20 finished matches to train.
 
-Tips include an `estimatedOdds` field (derived from model probability) so P&L and ROI are tracked for all tips, including those without bookmaker odds coverage. The performance dashboard displays win rate, total P&L, and ROI across all settled tips.
+The performance dashboard displays win rate across all settled tips.
 
 ### Python API endpoints
 
@@ -227,13 +227,13 @@ Tips include an `estimatedOdds` field (derived from model probability) so P&L an
 
 ## Covered Leagues
 
-| League | Country | football-data.org code |
-|---|---|---|
-| Premier League | England | PL |
-| La Liga | Spain | PD |
-| Serie A | Italy | SA |
-| Bundesliga | Germany | BL1 |
-| UEFA Champions League | Europe | CL |
+| League | Country | football-data.org code | Notes |
+|---|---|---|---|
+| Premier League | England | PL | All teams |
+| La Liga | Spain | PD | Predictions for Real Madrid, Barcelona, Atletico, Villarreal only |
+| Serie A | Italy | SA | Predictions & odds for Inter Milan, AC Milan, Napoli, Roma, Juventus only |
+| Bundesliga | Germany | BL1 | All teams |
+| UEFA Champions League | Europe | CL | All teams |
 
 ## Project Structure
 
