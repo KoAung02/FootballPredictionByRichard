@@ -45,13 +45,6 @@ const LA_LIGA_TOP_TEAMS = new Set([
   "Villarreal CF",
 ]);
 
-const SERIE_A_TOP_TEAMS = new Set([
-  "FC Internazionale Milano",
-  "SSC Napoli",
-  "AC Milan",
-  "Juventus FC",
-  "AS Roma",
-]);
 
 // ── Job ────────────────────────────────────────────────────────────────────────
 
@@ -129,10 +122,6 @@ export async function fetchFixturesJob(): Promise<FixtureJobResult[]> {
           continue;
         }
 
-        if (league.code === "SA" && !SERIE_A_TOP_TEAMS.has(homeTeam.name) && !SERIE_A_TOP_TEAMS.has(awayTeam.name)) {
-          skipped++;
-          continue;
-        }
 
         await prisma.match.upsert({
           where: { apiFootballId: f.id },
