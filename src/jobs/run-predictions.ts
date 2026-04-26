@@ -24,6 +24,21 @@ import {
   type H2HInput,
 } from "@/services/prediction-engine";
 
+// ── League-specific team filters ──────────────────────────────────────────────
+const LA_LIGA_PREDICT_TEAMS = new Set([
+  "Real Madrid CF",
+  "FC Barcelona",
+  "Club Atlético de Madrid",
+  "Villarreal CF",
+]);
+
+function shouldPredict(leagueSlug: string, homeTeamName: string, awayTeamName: string): boolean {
+  if (leagueSlug === "la-liga") {
+    return LA_LIGA_PREDICT_TEAMS.has(homeTeamName) || LA_LIGA_PREDICT_TEAMS.has(awayTeamName);
+  }
+  return true;
+}
+
 // ── DB → engine type mappers ───────────────────────────────────────────────────
 
 function toTeamStatsInput(
@@ -271,6 +286,10 @@ export async function runPredictionsJob(): Promise<PredictionsJobResult> {
   let errors           = 0;
 
   for (const match of matches) {
+    if (!shouldPredict(match.league.slug, match.homeTeam.name, match.awayTeam.name)) {
+      continue;
+    }
+
     // Always refresh pending tips with latest model output
     if (match.tips.length > 0) {
       await prisma.tip.deleteMany({

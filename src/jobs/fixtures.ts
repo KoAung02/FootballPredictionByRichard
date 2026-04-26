@@ -36,16 +36,6 @@ function toMatchStatus(status: string): MatchStatus {
   }
 }
 
-// ── La Liga top-team filter ────────────────────────────────────────────────────
-// Only store La Liga fixtures involving at least one of these clubs.
-const LA_LIGA_TOP_TEAMS = new Set([
-  "Real Madrid CF",
-  "FC Barcelona",
-  "Club Atlético de Madrid",
-  "Villarreal CF",
-]);
-
-
 // ── Job ────────────────────────────────────────────────────────────────────────
 
 export interface FixtureJobResult {
@@ -117,10 +107,6 @@ export async function fetchFixturesJob(): Promise<FixtureJobResult[]> {
           continue;
         }
 
-        if (league.code === "PD" && !LA_LIGA_TOP_TEAMS.has(homeTeam.name) && !LA_LIGA_TOP_TEAMS.has(awayTeam.name)) {
-          skipped++;
-          continue;
-        }
 
 
         await prisma.match.upsert({
