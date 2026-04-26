@@ -42,14 +42,6 @@ export const TARGET_LEAGUES = [
     sportKey: SPORT_KEYS.BUNDESLIGA,
   },
   {
-    id: COMPETITION_NUMERIC_IDS.FL1,
-    code: "FL1" as CompetitionCode,
-    name: "Ligue 1",
-    country: "France",
-    slug: "ligue-1",
-    sportKey: SPORT_KEYS.LIGUE_1,
-  },
-  {
     id: COMPETITION_NUMERIC_IDS.CL,
     code: "CL" as CompetitionCode,
     name: "UEFA Champions League",

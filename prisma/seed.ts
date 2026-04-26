@@ -21,7 +21,6 @@ const TARGET_LEAGUES = [
   { id: COMPETITION_NUMERIC_IDS.PD, code: "PD" as const, name: "La Liga",        country: "Spain",   slug: "la-liga"        },
   { id: COMPETITION_NUMERIC_IDS.SA, code: "SA" as const, name: "Serie A",        country: "Italy",   slug: "serie-a"        },
   { id: COMPETITION_NUMERIC_IDS.BL1, code: "BL1" as const, name: "Bundesliga",  country: "Germany", slug: "bundesliga"     },
-  { id: COMPETITION_NUMERIC_IDS.FL1, code: "FL1" as const, name: "Ligue 1",     country: "France",  slug: "ligue-1"        },
 ] as const;
 
 const CURRENT_SEASON = 2025;
