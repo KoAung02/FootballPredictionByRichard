@@ -1,10 +1,10 @@
 # FootballEdge
 
-A full-stack football betting intelligence platform that combines statistical modelling, machine learning, and bookmaker odds to generate value betting tips across 6 major leagues including the UEFA Champions League.
+A full-stack football betting intelligence platform that combines statistical modelling, machine learning, and bookmaker odds to generate value betting tips across 5 leagues including the UEFA Champions League.
 
 ## Overview
 
-FootballEdge fetches live fixture data, team statistics, and bookmaker odds via external APIs, then runs them through an ML prediction engine to surface high-confidence tips with value ratings. Tips cover match result (1X2 or double chance) and Over/Under 2.5 goals markets. A performance dashboard tracks P&L and ROI across all settled tips.
+FootballEdge fetches live fixture data, team statistics, and bookmaker odds via external APIs, then runs them through an ML prediction engine to surface high-confidence tips with value ratings. Tips cover match result (1X2 or double chance) and Over/Under 2.5 goals markets across the top European leagues. A performance dashboard tracks P&L and ROI across all settled tips.
 
 ## Architecture
 
@@ -233,7 +233,6 @@ Tips include an `estimatedOdds` field (derived from model probability) so P&L an
 | La Liga | Spain | PD |
 | Serie A | Italy | SA |
 | Bundesliga | Germany | BL1 |
-| Ligue 1 | France | FL1 |
 | UEFA Champions League | Europe | CL |
 
 ## Project Structure
