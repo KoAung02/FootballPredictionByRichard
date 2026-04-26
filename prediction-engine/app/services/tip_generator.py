@@ -224,20 +224,7 @@ class TipGenerator:
     def _stake_from_confidence(
         self, confidence: float, value_bet: Optional[Dict]
     ) -> int:
-        """Map confidence + value to a 1-5 unit stake recommendation."""
-        if confidence >= 80:
-            base = 4
-        elif confidence >= 65:
-            base = 3
-        elif confidence >= 50:
-            base = 2
-        else:
-            base = 1
-
-        if value_bet and value_bet.get("edge", 0) > 0.07:
-            base = min(base + 1, 5)
-
-        return base
+        return 1
 
     def _build_1x2_reasoning(
         self,
