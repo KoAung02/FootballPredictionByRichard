@@ -32,9 +32,20 @@ const LA_LIGA_PREDICT_TEAMS = new Set([
   "Villarreal CF",
 ]);
 
+const SERIE_A_PREDICT_TEAMS = new Set([
+  "FC Internazionale Milano",
+  "AC Milan",
+  "SSC Napoli",
+  "AS Roma",
+  "Juventus FC",
+]);
+
 function shouldPredict(leagueSlug: string, homeTeamName: string, awayTeamName: string): boolean {
   if (leagueSlug === "la-liga") {
     return LA_LIGA_PREDICT_TEAMS.has(homeTeamName) || LA_LIGA_PREDICT_TEAMS.has(awayTeamName);
+  }
+  if (leagueSlug === "serie-a") {
+    return SERIE_A_PREDICT_TEAMS.has(homeTeamName) || SERIE_A_PREDICT_TEAMS.has(awayTeamName);
   }
   return true;
 }
