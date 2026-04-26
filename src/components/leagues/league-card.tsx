@@ -16,7 +16,6 @@ const leagueFlags: Record<string, string> = {
   Spain: "🇪🇸",
   Italy: "🇮🇹",
   Germany: "🇩🇪",
-  France: "🇫🇷",
 };
 
 export function LeagueCard({ league }: { league: LeagueCardProps }) {

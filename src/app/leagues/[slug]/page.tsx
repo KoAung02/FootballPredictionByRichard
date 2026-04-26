@@ -11,7 +11,6 @@ const leagueFlags: Record<string, string> = {
   Spain: "🇪🇸",
   Italy: "🇮🇹",
   Germany: "🇩🇪",
-  France: "🇫🇷",
 };
 
 async function getLeague(slug: string) {

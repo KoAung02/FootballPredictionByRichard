@@ -46,7 +46,6 @@ const leagueFlags: Record<string, string> = {
   Spain: "🇪🇸",
   Italy: "🇮🇹",
   Germany: "🇩🇪",
-  France: "🇫🇷",
 };
 
 export default async function HomePage() {
