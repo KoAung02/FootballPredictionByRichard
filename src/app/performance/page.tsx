@@ -77,23 +77,6 @@ export default async function PerformancePage() {
 
   const accuracy = settled > 0 ? Math.round((won / settled) * 100) : null;
 
-  // P&L: win = (odds - 1) × stake, loss = -stake
-  // Double chance tips use model-estimated odds (1 / probability) when no bookmaker odds exist
-  const settledTips = tips.filter((t) => t.result === "WON" || t.result === "LOST");
-
-  const roi = settledTips.length > 0
-    ? settledTips.reduce((sum, t) => {
-        if (t.result === "WON") return sum + ((t.bestOdds ?? 1) - 1) * t.suggestedStake;
-        return sum - t.suggestedStake;
-      }, 0)
-    : null;
-
-  const totalStaked = settledTips.reduce((s, t) => s + t.suggestedStake, 0);
-
-  const roiPct = totalStaked > 0 && roi !== null
-    ? ((roi / totalStaked) * 100).toFixed(1)
-    : null;
-
   // ── Group by match date (day) ─────────────────────────────────────────────
   const byDay = tips.reduce<Record<string, typeof tips>>((acc, tip) => {
     const day = new Date(tip.match.matchDate).toDateString();
@@ -118,7 +101,7 @@ export default async function PerformancePage() {
         </div>
 
         {/* Summary cards */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-10">
+        <div className="grid grid-cols-2 gap-4 mb-10 max-w-sm">
           <div className="rounded-xl border border-gray-200 bg-gray-50 p-5 dark:border-slate-800 dark:bg-slate-900">
             <p className="text-xs text-gray-400 mb-1 dark:text-slate-500">Total settled</p>
             <p className="text-3xl font-bold text-gray-900 dark:text-white">{settled}</p>
@@ -133,34 +116,6 @@ export default async function PerformancePage() {
                 {won}W {lost}L{voided > 0 ? ` ${voided}V` : ""}
               </p>
             )}
-          </div>
-          <div className="rounded-xl border border-gray-200 bg-gray-50 p-5 dark:border-slate-800 dark:bg-slate-900">
-            <p className="text-xs text-gray-400 mb-1 dark:text-slate-500">Units P&L</p>
-            <p
-              className={`text-3xl font-bold ${
-                roi === null ? "text-gray-900 dark:text-white" : roi >= 0 ? "text-green-600 dark:text-green-400" : "text-red-500 dark:text-red-400"
-              }`}
-            >
-              {roi !== null
-                ? `${roi >= 0 ? "+" : ""}${roi.toFixed(1)}u`
-                : "—"}
-            </p>
-          </div>
-          <div className="rounded-xl border border-gray-200 bg-gray-50 p-5 dark:border-slate-800 dark:bg-slate-900">
-            <p className="text-xs text-gray-400 mb-1 dark:text-slate-500">ROI</p>
-            <p
-              className={`text-3xl font-bold ${
-                roiPct === null
-                  ? "text-gray-900 dark:text-white"
-                  : parseFloat(roiPct) >= 0
-                  ? "text-green-600 dark:text-green-400"
-                  : "text-red-500 dark:text-red-400"
-              }`}
-            >
-              {roiPct !== null
-                ? `${parseFloat(roiPct) >= 0 ? "+" : ""}${roiPct}%`
-                : "—"}
-            </p>
           </div>
         </div>
 
