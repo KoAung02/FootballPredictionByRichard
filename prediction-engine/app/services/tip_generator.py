@@ -111,7 +111,7 @@ class TipGenerator:
             over_prob  = ou["over_2.5"]
             under_prob = ou["under_2.5"]
 
-            if over_prob > 0.55 or under_prob > 0.55:
+            if over_prob > 0.65 or under_prob > 0.65:
                 is_over    = over_prob >= under_prob
                 selection  = "Over 2.5" if is_over else "Under 2.5"
                 prob       = over_prob if is_over else under_prob
@@ -139,7 +139,7 @@ class TipGenerator:
             btts_yes_prob = bts["yes"]
             btts_no_prob  = bts["no"]
 
-            if btts_yes_prob > 0.58 or btts_no_prob > 0.58:
+            if btts_yes_prob > 0.65 or btts_no_prob > 0.65:
                 is_yes    = btts_yes_prob >= btts_no_prob
                 selection = "BTTS Yes" if is_yes else "BTTS No"
                 prob      = btts_yes_prob if is_yes else btts_no_prob
