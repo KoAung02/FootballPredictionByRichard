@@ -54,21 +54,19 @@ class TipGenerator:
             selection_label = label_map[best_outcome]
             matching_vb = [vb for vb in value_bets if vb["market"] == "1X2" and vb["selection"] == selection_label]
             confidence  = self._calculate_confidence(best_prob, matching_vb, match_info)
-            if confidence >= self.CONFIDENCE_THRESHOLD:
-                tips.append(self._build_tip(
-                    tip_type="1X2",
-                    prediction=selection_label,
-                    confidence=confidence,
-                    calc_prob=best_prob,
-                    value_bet=matching_vb[0] if matching_vb else None,
-                    reasoning=self._build_1x2_reasoning(best_outcome, match_info, eg, prediction),
-                    model_breakdown={"match_result": mr},
-                    estimated_odds=self._best_odds(odds_data, odds_field_map[best_outcome]),
-                ))
+            tips.append(self._build_tip(
+                tip_type="1X2",
+                prediction=selection_label,
+                confidence=confidence,
+                calc_prob=best_prob,
+                value_bet=matching_vb[0] if matching_vb else None,
+                reasoning=self._build_1x2_reasoning(best_outcome, match_info, eg, prediction),
+                model_breakdown={"match_result": mr},
+                estimated_odds=self._best_odds(odds_data, odds_field_map[best_outcome]),
+            ))
         else:
-            # Double Chance: compare combined probabilities
-            one_x_prob = home_prob + draw_prob   # 1X
-            two_x_prob = away_prob + draw_prob   # 2X
+            one_x_prob = home_prob + draw_prob
+            two_x_prob = away_prob + draw_prob
             if one_x_prob >= two_x_prob:
                 dc_sel, dc_prob = "1X", one_x_prob
             else:
@@ -76,58 +74,51 @@ class TipGenerator:
 
             dc_vb      = [vb for vb in value_bets if vb.get("market") == "Double Chance" and vb.get("selection") == dc_sel]
             confidence = self._calculate_confidence(dc_prob, dc_vb, match_info)
-            if confidence >= self.CONFIDENCE_THRESHOLD:
-                tips.append(self._build_tip(
-                    tip_type="DOUBLE_CHANCE",
-                    prediction=dc_sel,
-                    confidence=confidence,
-                    calc_prob=dc_prob,
-                    value_bet=dc_vb[0] if dc_vb else None,
-                    reasoning=self._build_dc_reasoning(dc_sel, match_info, home_prob, draw_prob, away_prob),
-                    model_breakdown={"match_result": mr},
-                    estimated_odds=round(1.0 / dc_prob, 2) if dc_prob > 0 else None,
-                ))
+            tips.append(self._build_tip(
+                tip_type="DOUBLE_CHANCE",
+                prediction=dc_sel,
+                confidence=confidence,
+                calc_prob=dc_prob,
+                value_bet=dc_vb[0] if dc_vb else None,
+                reasoning=self._build_dc_reasoning(dc_sel, match_info, home_prob, draw_prob, away_prob),
+                model_breakdown={"match_result": mr},
+                estimated_odds=round(1.0 / dc_prob, 2) if dc_prob > 0 else None,
+            ))
 
         # ── Over 2.5 or Under 3.5 ────────────────────────────────────────────
         if ou.get("over_2.5") is not None:
-            over25_prob = ou["over_2.5"]
-
-            # Under 3.5: P(goals <= 3) via Poisson from expected goals
-            xg_total    = eg.get("total", 0) or 0
+            over25_prob  = ou["over_2.5"]
+            xg_total     = eg.get("total", 0) or 0
             under35_prob = self._poisson_under_prob(xg_total, 3) if xg_total > 0 else 0.0
 
-            # Over 2.5
             if over25_prob > 0.65:
                 ou_vb      = [vb for vb in value_bets if vb["selection"] == "Over 2.5"]
                 confidence = self._calculate_confidence(over25_prob, ou_vb, match_info)
-                if confidence >= self.CONFIDENCE_THRESHOLD:
-                    tips.append(self._build_tip(
-                        tip_type="OVER_UNDER",
-                        prediction="Over 2.5",
-                        confidence=confidence,
-                        calc_prob=over25_prob,
-                        value_bet=ou_vb[0] if ou_vb else None,
-                        reasoning=self._build_ou_reasoning("Over 2.5", match_info, eg),
-                        model_breakdown={"poisson": ou},
-                        estimated_odds=self._best_odds(odds_data, "overOdds"),
-                    ))
+                tips.append(self._build_tip(
+                    tip_type="OVER_UNDER",
+                    prediction="Over 2.5",
+                    confidence=confidence,
+                    calc_prob=over25_prob,
+                    value_bet=ou_vb[0] if ou_vb else None,
+                    reasoning=self._build_ou_reasoning("Over 2.5", match_info, eg),
+                    model_breakdown={"poisson": ou},
+                    estimated_odds=self._best_odds(odds_data, "overOdds"),
+                ))
 
-            # Under 3.5
             if under35_prob > 0.65:
                 confidence = self._calculate_confidence(under35_prob, [], match_info)
-                if confidence >= self.CONFIDENCE_THRESHOLD:
-                    tips.append(self._build_tip(
-                        tip_type="OVER_UNDER",
-                        prediction="Under 3.5",
-                        confidence=confidence,
-                        calc_prob=under35_prob,
-                        value_bet=None,
-                        reasoning=self._build_ou_reasoning("Under 3.5", match_info, eg),
-                        model_breakdown={"poisson": ou},
-                        estimated_odds=None,
-                    ))
+                tips.append(self._build_tip(
+                    tip_type="OVER_UNDER",
+                    prediction="Under 3.5",
+                    confidence=confidence,
+                    calc_prob=under35_prob,
+                    value_bet=None,
+                    reasoning=self._build_ou_reasoning("Under 3.5", match_info, eg),
+                    model_breakdown={"poisson": ou},
+                    estimated_odds=None,
+                ))
 
-        # ── BTTS (only if both teams consistently score) ──────────────────────
+        # ── BTTS ─────────────────────────────────────────────────────────────
         if bts.get("yes") is not None:
             btts_yes_prob  = bts["yes"]
             btts_no_prob   = bts["no"]
@@ -140,16 +131,15 @@ class TipGenerator:
                 selection = "BTTS Yes" if is_yes else "BTTS No"
                 btts_vb   = [vb for vb in value_bets if vb["market"] == "BTTS" and vb["selection"] == ("Yes" if is_yes else "No")]
                 confidence = self._calculate_confidence(best_btts_prob, btts_vb, match_info)
-                if confidence >= self.CONFIDENCE_THRESHOLD:
-                    tips.append(self._build_tip(
-                        tip_type="BTTS",
-                        prediction=selection,
-                        confidence=confidence,
-                        calc_prob=best_btts_prob,
-                        value_bet=btts_vb[0] if btts_vb else None,
-                        reasoning=self._build_btts_reasoning(selection, match_info),
-                        model_breakdown={"poisson": bts},
-                    ))
+                tips.append(self._build_tip(
+                    tip_type="BTTS",
+                    prediction=selection,
+                    confidence=confidence,
+                    calc_prob=best_btts_prob,
+                    value_bet=btts_vb[0] if btts_vb else None,
+                    reasoning=self._build_btts_reasoning(selection, match_info),
+                    model_breakdown={"poisson": bts},
+                ))
 
         return tips
 
