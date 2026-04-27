@@ -1,71 +1,27 @@
 /**
- * Step 15 – Team stats fetching job
+ * Step 15 – Team stats job
  *
- * Derives season statistics for every team from the league standings
- * endpoint (football-data.org). One API call per league instead of
- * one per team — far friendlier on the free-tier rate limit.
+ * Combines two sources:
+ *  1. BBC Sport scraper (via prediction engine) — overall W/D/L, goals, form
+ *  2. Our own Match table — home/away splits, BTTS rate, over 2.5 rate
  *
  * Schedule: daily at 4 AM  →  "0 4 * * *"
  */
 
-import { CURRENT_SEASON, TARGET_LEAGUES, API_FOOTBALL_DELAY_MS, sleep } from "@/lib/constants";
+import { CURRENT_SEASON, TARGET_LEAGUES, sleep } from "@/lib/constants";
 import { CacheKeys, CacheTTL } from "@/lib/cache-keys";
 import { prisma } from "@/lib/prisma";
 import { getCache, setCache } from "@/lib/redis";
-import { footballData, type FDStandingRow } from "@/services/football-data";
 
-// ── Mapper ─────────────────────────────────────────────────────────────────────
+const PREDICTION_ENGINE_URL = process.env.PREDICTION_ENGINE_URL ?? "http://localhost:8000";
 
-function mapStandingRow(row: FDStandingRow, teamId: number) {
-  return {
-    teamId,
-    season: CURRENT_SEASON,
-    matchesPlayed: row.playedGames,
-    wins: row.won,
-    draws: row.draw,
-    losses: row.lost,
-    goalsFor: row.goalsFor,
-    goalsAgainst: row.goalsAgainst,
-    cleanSheets: 0,
-    homeWins: 0,
-    homeDraws: 0,
-    homeLosses: 0,
-    homeGoalsFor: 0,
-    homeGoalsAgainst: 0,
-    awayWins: 0,
-    awayDraws: 0,
-    awayLosses: 0,
-    awayGoalsFor: 0,
-    awayGoalsAgainst: 0,
-    form: row.form ?? null,
-  };
+function nameMatch(bbcName: string, dbName: string): boolean {
+  const a = bbcName.toLowerCase().replace(/[^a-z0-9 ]/g, "").trim();
+  const b = dbName.toLowerCase().replace(/[^a-z0-9 ]/g, "").trim();
+  if (a === b) return true;
+  if (a.includes(b) || b.includes(a)) return true;
+  return a.split(" ")[0] === b.split(" ")[0] && a.split(" ")[0].length > 2;
 }
-
-function mapHomeAwayRow(
-  total: FDStandingRow,
-  home: FDStandingRow | undefined,
-  away: FDStandingRow | undefined,
-  teamId: number
-) {
-  const base = mapStandingRow(total, teamId);
-  if (home) {
-    base.homeWins = home.won;
-    base.homeDraws = home.draw;
-    base.homeLosses = home.lost;
-    base.homeGoalsFor = home.goalsFor;
-    base.homeGoalsAgainst = home.goalsAgainst;
-  }
-  if (away) {
-    base.awayWins = away.won;
-    base.awayDraws = away.draw;
-    base.awayLosses = away.lost;
-    base.awayGoalsFor = away.goalsFor;
-    base.awayGoalsAgainst = away.goalsAgainst;
-  }
-  return base;
-}
-
-// ── Job ────────────────────────────────────────────────────────────────────────
 
 export interface TeamStatsJobResult {
   league: string;
@@ -78,10 +34,10 @@ export async function fetchTeamStatsJob(): Promise<TeamStatsJobResult[]> {
   const results: TeamStatsJobResult[] = [];
 
   for (const league of TARGET_LEAGUES) {
-    console.log(`[team-stats] ${league.name}: fetching standings…`);
+    console.log(`[team-stats] ${league.name}: fetching…`);
 
     const cacheKey = CacheKeys.teamStats(league.id, CURRENT_SEASON);
-    const cached = await getCache<TeamStatsJobResult>(cacheKey);
+    const cached   = await getCache<TeamStatsJobResult>(cacheKey);
     if (cached) {
       console.log(`[team-stats] ${league.name}: cache hit – skipping`);
       results.push(cached);
@@ -89,29 +45,96 @@ export async function fetchTeamStatsJob(): Promise<TeamStatsJobResult[]> {
     }
 
     let upserted = 0;
-    let skipped = 0;
+    let skipped  = 0;
 
     try {
-      const standings = await footballData.getStandings(league.code);
+      const leagueRecord = await prisma.league.findUnique({ where: { apiFootballId: league.id } });
+      if (!leagueRecord) continue;
 
-      const homeMap = new Map(standings.home.map((r) => [r.team.id, r]));
-      const awayMap = new Map(standings.away.map((r) => [r.team.id, r]));
+      // ── 1. BBC Sport overall stats ──────────────────────────────────────
+      const res  = await fetch(`${PREDICTION_ENGINE_URL}/scrape/team-stats/${league.slug}`);
+      if (!res.ok) throw new Error(`BBC scrape failed: ${res.status}`);
+      const json = await res.json() as { ok: boolean; data: Record<string, number | string>[] };
+      const bbcData = json.data;
 
-      for (const row of standings.total) {
-        const team = await prisma.team.findUnique({
-          where: { apiFootballId: row.team.id },
-        });
+      // ── 2. Match history for home/away splits ────────────────────────────
+      const finishedMatches = await prisma.match.findMany({
+        where: {
+          leagueId:  leagueRecord.id,
+          status:    "FINISHED",
+          homeGoals: { not: null },
+          awayGoals: { not: null },
+        },
+        orderBy: { matchDate: "desc" },
+      });
+
+      const dbTeams = await prisma.team.findMany({ where: { leagueId: leagueRecord.id } });
+
+      for (const row of bbcData) {
+        const bbcName = String(row.team_name);
+        const team    = dbTeams.find((t) => nameMatch(bbcName, t.name));
 
         if (!team) {
-          console.warn(`[team-stats] Team ${row.team.name} (${row.team.id}) not in DB – skipping`);
+          console.warn(`[team-stats] ${league.name}: no DB match for "${bbcName}"`);
           skipped++;
           continue;
         }
 
-        const data = mapHomeAwayRow(row, homeMap.get(row.team.id), awayMap.get(row.team.id), team.id);
+        // ── Home/away splits from match history ─────────────────────────
+        const homeMatches = finishedMatches.filter((m) => m.homeTeamId === team.id);
+        const awayMatches = finishedMatches.filter((m) => m.awayTeamId === team.id);
+
+        let homeWins = 0, homeDraws = 0, homeLosses = 0, homeGF = 0, homeGA = 0;
+        let awayWins = 0, awayDraws = 0, awayLosses = 0, awayGF = 0, awayGA = 0;
+        let btts = 0, over25 = 0;
+
+        for (const m of homeMatches) {
+          homeGF += m.homeGoals!; homeGA += m.awayGoals!;
+          if (m.homeGoals! > m.awayGoals!) homeWins++;
+          else if (m.homeGoals! < m.awayGoals!) homeLosses++;
+          else homeDraws++;
+          if (m.homeGoals! > 0 && m.awayGoals! > 0) btts++;
+          if (m.homeGoals! + m.awayGoals! > 2) over25++;
+        }
+
+        for (const m of awayMatches) {
+          awayGF += m.awayGoals!; awayGA += m.homeGoals!;
+          if (m.awayGoals! > m.homeGoals!) awayWins++;
+          else if (m.awayGoals! < m.homeGoals!) awayLosses++;
+          else awayDraws++;
+          if (m.homeGoals! > 0 && m.awayGoals! > 0) btts++;
+          if (m.homeGoals! + m.awayGoals! > 2) over25++;
+        }
+
+        const totalMatches = homeMatches.length + awayMatches.length;
+
+        const data = {
+          teamId:           team.id,
+          season:           CURRENT_SEASON,
+          matchesPlayed:    Number(row.matches_played) || totalMatches,
+          wins:             Number(row.wins)           || 0,
+          draws:            Number(row.draws)          || 0,
+          losses:           Number(row.losses)         || 0,
+          goalsFor:         Number(row.goals_for)      || 0,
+          goalsAgainst:     Number(row.goals_against)  || 0,
+          cleanSheets:      0,
+          homeWins,
+          homeDraws,
+          homeLosses,
+          homeGoalsFor:     homeGF,
+          homeGoalsAgainst: homeGA,
+          awayWins,
+          awayDraws,
+          awayLosses,
+          awayGoalsFor:     awayGF,
+          awayGoalsAgainst: awayGA,
+          form:             String(row.form || ""),
+          bttsRate:   totalMatches > 0 ? btts   / totalMatches : null,
+          over25Rate: totalMatches > 0 ? over25 / totalMatches : null,
+        };
 
         await prisma.teamStats.upsert({
-          where: { teamId_season: { teamId: team.id, season: CURRENT_SEASON } },
+          where:  { teamId_season: { teamId: team.id, season: CURRENT_SEASON } },
           update: data,
           create: data,
         });
@@ -120,24 +143,22 @@ export async function fetchTeamStatsJob(): Promise<TeamStatsJobResult[]> {
       }
 
       const summary: TeamStatsJobResult = {
-        league: league.name,
-        teams: standings.total.length,
+        league:  league.name,
+        teams:   bbcData.length,
         upserted,
         skipped,
       };
 
       await setCache(cacheKey, summary, CacheTTL.teamStats);
       results.push(summary);
+      console.log(`[team-stats] ${league.name}: upserted=${upserted} skipped=${skipped}`);
 
-      console.log(
-        `[team-stats] ${league.name}: teams=${standings.total.length} upserted=${upserted} skipped=${skipped}`
-      );
     } catch (err) {
       console.error(`[team-stats] ${league.name}: error –`, err);
       results.push({ league: league.name, teams: 0, upserted, skipped });
     }
 
-    await sleep(API_FOOTBALL_DELAY_MS);
+    await sleep(2000);
   }
 
   return results;

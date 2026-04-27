@@ -13,6 +13,7 @@ Deferred (later phases):
 """
 
 from fastapi import FastAPI, HTTPException
+from app.services.bbc_sport import scrape_standings
 
 from app.config import settings
 from app.models.poisson import PoissonModel
@@ -201,6 +202,16 @@ async def predict_match_ml(request: MLPredictRequest):
                 "is_trained": ml_model.is_trained,
             },
         )
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@app.get("/scrape/team-stats/{league_slug}")
+async def scrape_bbc_team_stats(league_slug: str):
+    """Scrape overall standings from BBC Sport for a given league."""
+    try:
+        data = await scrape_standings(league_slug)
+        return {"ok": True, "league": league_slug, "teams": len(data), "data": data}
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
