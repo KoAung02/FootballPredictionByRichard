@@ -325,6 +325,70 @@ class ApiFootballClient {
     });
     return results[0] ?? null;
   }
+
+  // ─── Odds ─────────────────────────────────────────────────────────────────
+
+  /**
+   * Fetch pre-match odds for a league on a specific date.
+   * Returns normalised {homeWin, draw, awayWin, overOdds, underOdds} per fixture.
+   */
+  async getOddsForLeague(leagueId: number, season: number, date: string): Promise<ApiFootballOdds[]> {
+    const raw = await this.get<ApiFootballOddsResponse>("/odds", {
+      league: leagueId,
+      season,
+      date,
+    });
+    return raw.map(normaliseApiFootballOdds).filter(Boolean) as ApiFootballOdds[];
+  }
+}
+
+export interface ApiFootballOdds {
+  fixtureDate: string;
+  homeTeam: string;
+  awayTeam: string;
+  bookmaker: string;
+  homeWin:   number | null;
+  draw:      number | null;
+  awayWin:   number | null;
+  overOdds:  number | null;
+  underOdds: number | null;
+}
+
+interface ApiFootballOddsResponse {
+  fixture: { id: number; date: string };
+  teams:   { home: { name: string }; away: { name: string } };
+  bookmakers: {
+    id: number;
+    name: string;
+    bets: { id: number; name: string; values: { value: string; odd: string }[] }[];
+  }[];
+}
+
+function normaliseApiFootballOdds(raw: ApiFootballOddsResponse): ApiFootballOdds | null {
+  const bookmaker = raw.bookmakers?.[0];
+  if (!bookmaker) return null;
+
+  const matchWinner = bookmaker.bets.find((b) => b.id === 1);
+  const overUnder   = bookmaker.bets.find((b) => b.id === 5);
+
+  const findOdd = (bets: { value: string; odd: string }[], val: string) => {
+    const found = bets?.find((b) => b.value === val);
+    return found ? parseFloat(found.odd) : null;
+  };
+
+  const ou25 = overUnder?.values.filter((v) => v.value.includes("2.5")) ?? [];
+
+  return {
+    fixtureDate: raw.fixture.date,
+    homeTeam:    raw.teams.home.name,
+    awayTeam:    raw.teams.away.name,
+    bookmaker:   bookmaker.name,
+    homeWin:     matchWinner ? findOdd(matchWinner.values, "Home") : null,
+    draw:        matchWinner ? findOdd(matchWinner.values, "Draw") : null,
+    awayWin:     matchWinner ? findOdd(matchWinner.values, "Away") : null,
+    overOdds:    findOdd(ou25, "Over 2.5"),
+    underOdds:   findOdd(ou25, "Under 2.5"),
+  };
 }
 
 // Export a singleton instance

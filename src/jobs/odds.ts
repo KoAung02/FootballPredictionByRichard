@@ -8,7 +8,7 @@
  * Schedule: every 30 minutes  →  "*\/30 * * * *"
  */
 
-import { TARGET_LEAGUES, sleep } from "@/lib/constants";
+import { TARGET_LEAGUES, API_FOOTBALL_LEAGUE_IDS, CURRENT_SEASON, API_FOOTBALL_DELAY_MS, sleep } from "@/lib/constants";
 import { CacheKeys, CacheTTL } from "@/lib/cache-keys";
 import { prisma } from "@/lib/prisma";
 import { getCache, setCache } from "@/lib/redis";
@@ -18,6 +18,7 @@ import {
   type EventOdds,
   type NormalisedOdds,
 } from "@/services/odds-api";
+import { apiFootball } from "@/services/api-football";
 
 // ── Team-name matching ─────────────────────────────────────────────────────────
 
@@ -73,6 +74,36 @@ async function resolveMatchId(
   return null;
 }
 
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+function getNextDays(n: number): string[] {
+  return Array.from({ length: n }, (_, i) => {
+    const d = new Date();
+    d.setDate(d.getDate() + i);
+    return d.toISOString().slice(0, 10);
+  });
+}
+
+async function resolveMatchIdByName(
+  homeTeam: string,
+  awayTeam: string,
+  leagueApiFootballId: number,
+  date: string
+): Promise<number | null> {
+  const dayStart = new Date(`${date}T00:00:00Z`);
+  const dayEnd   = new Date(`${date}T23:59:59Z`);
+  const candidates = await prisma.match.findMany({
+    where: { league: { apiFootballId: leagueApiFootballId }, matchDate: { gte: dayStart, lte: dayEnd } },
+    include: { homeTeam: true, awayTeam: true },
+  });
+  for (const m of candidates) {
+    if (teamsMatch(homeTeam, m.homeTeam.name) && teamsMatch(awayTeam, m.awayTeam.name)) {
+      return m.id;
+    }
+  }
+  return null;
+}
+
 // ── Job ────────────────────────────────────────────────────────────────────────
 
 export interface OddsJobResult {
@@ -118,6 +149,41 @@ export async function fetchOddsJob(): Promise<OddsJobResult[]> {
         console.error(`[odds] ${league.name}: fetch error –`, err);
         results.push({ league: league.name, events: 0, matched: 0, oddsUpserted: 0 });
         continue;
+      }
+
+      // ── Fallback: API-Football odds when The Odds API returns nothing ────
+      if (events.length === 0) {
+        console.log(`[odds] ${league.name}: no events from The Odds API, trying API-Football fallback…`);
+        const afLeagueId = API_FOOTBALL_LEAGUE_IDS[league.slug];
+        if (afLeagueId) {
+          try {
+            const dates = getNextDays(7);
+            let afMatched = 0;
+            let afUpserted = 0;
+            for (const date of dates) {
+              const afOdds = await apiFootball.getOddsForLeague(afLeagueId, CURRENT_SEASON, date);
+              for (const o of afOdds) {
+                const matchId = await resolveMatchIdByName(o.homeTeam, o.awayTeam, league.id, date);
+                if (!matchId) continue;
+                afMatched++;
+                await prisma.odds.upsert({
+                  where: { id: (await prisma.odds.findFirst({ where: { matchId, bookmaker: o.bookmaker, market: "h2h" }, select: { id: true } }))?.id ?? 0 },
+                  update: { homeWin: o.homeWin, draw: o.draw, awayWin: o.awayWin, overOdds: o.overOdds, underOdds: o.underOdds, fetchedAt: new Date() },
+                  create: { matchId, bookmaker: o.bookmaker, market: "h2h", homeWin: o.homeWin, draw: o.draw, awayWin: o.awayWin, overOdds: o.overOdds, underOdds: o.underOdds },
+                });
+                afUpserted++;
+              }
+              await sleep(1200);
+            }
+            results.push({ league: league.name, events: afMatched, matched: afMatched, oddsUpserted: afUpserted });
+            console.log(`[odds] ${league.name}: API-Football fallback matched=${afMatched} upserted=${afUpserted}`);
+          } catch (err) {
+            console.error(`[odds] ${league.name}: API-Football fallback error –`, err);
+            results.push({ league: league.name, events: 0, matched: 0, oddsUpserted: 0 });
+          }
+          await sleep(API_FOOTBALL_DELAY_MS);
+          continue;
+        }
       }
     } else {
       console.log(`[odds] ${league.name}: using cached events (${events.length})`);

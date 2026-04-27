@@ -70,6 +70,15 @@ export const SLUG_TO_LEAGUE_ID: Record<string, number> = Object.fromEntries(
   TARGET_LEAGUES.map((l) => [l.slug, l.id])
 );
 
+/** API-Football (api-sports.io) league IDs — used for the fallback odds fetcher. */
+export const API_FOOTBALL_LEAGUE_IDS: Record<string, number> = {
+  "premier-league":   39,
+  "la-liga":         140,
+  "serie-a":         135,
+  "bundesliga":       78,
+  "champions-league":  2,
+};
+
 // ── Rate limiting helpers ──────────────────────────────────────────────────────
 
 /** Pause execution for the given number of milliseconds. */
