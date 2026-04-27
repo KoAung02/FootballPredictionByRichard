@@ -24,8 +24,6 @@ import {
   type H2HInput,
 } from "@/services/prediction-engine";
 
-const MIN_CONFIDENCE = 65;
-
 // ── DB → engine type mappers ───────────────────────────────────────────────────
 
 function toTeamStatsInput(
@@ -212,7 +210,7 @@ async function getH2H(
 async function storeTips(matchId: number, response: MLPredictResponse): Promise<number> {
   let stored = 0;
   for (const tip of response.tips) {
-    if (tip.confidence < MIN_CONFIDENCE) continue;
+
     await prisma.tip.create({
       data: {
         matchId,
