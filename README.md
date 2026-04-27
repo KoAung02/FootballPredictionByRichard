@@ -136,7 +136,7 @@ Jobs run automatically via the cron runner. They can also be triggered manually 
 | Job | Schedule | Route | Description |
 |---|---|---|---|
 | fixtures | every 6h | `GET /api/crons/fixtures` | Fetch match results and upcoming fixtures (TBD knockout teams skipped) |
-| team-stats | 4 AM daily | `GET /api/crons/team-stats` | Recalculate team statistics and ELO ratings |
+| team-stats | 4 AM daily | `GET /api/crons/team-stats` | Scrape overall stats from BBC Sport + calculate home/away splits from match history |
 | odds | every 30 min | `GET /api/crons/odds` | Fetch latest bookmaker odds (h2h + totals; BTTS skipped on free tier) |
 | predictions | every 6h | `GET /api/crons/predictions` | Train ML model and generate tips |
 | update-results | every 1h | `GET /api/crons/update-results` | Mark tips as WIN/LOSS/PUSH based on results |
@@ -171,22 +171,32 @@ The engine uses **XGBoost** (scikit-learn compatible) with three binary/multi-cl
 - `ou_clf` — Over 2.5 goals / Under (binary)
 - `btts_clf` — Both teams score Yes / No (binary, used internally)
 
-Each classifier uses `n_estimators=100, max_depth=3, learning_rate=0.1`. Predictions are a **50/50 blend** of the ML output and market-implied probabilities derived from bookmaker odds.
+Each classifier uses `n_estimators=100, max_depth=3, learning_rate=0.1`. Predictions are a **50/50 blend** of the ML output and market-implied probabilities when bookmaker odds are available, or 100% ML output when no odds are available.
+
+### Confidence score
+
+Confidence is calculated from 5 statistical factors (no odds dependency):
+
+| Factor | Weight | Description |
+|---|---|---|
+| Probability strength | 35% | How far the probability is above the baseline |
+| Form consistency | 25% | Stability of recent results (WWWWW = high) |
+| ELO difference | 20% | Quality gap between the two teams |
+| H2H record | 10% | Historical dominance in head-to-head |
+| Home advantage | 10% | Home team's scoring rate |
 
 ### Tip selection logic
 
-The engine uses a **conservative single-pick** approach — one best tip per match, selected by priority order. A tip is only generated if confidence ≥ 65%, otherwise the match is skipped (NO BET).
-
-**Match result tip (always one per match):**
+**Match result tip (one per match):**
 - **1X2** if best outcome probability > 70%
 - **Double Chance** otherwise — 1X if (home + draw) > (away + draw), else 2X
 
 **Additional tips (generated independently if conditions met):**
 - **Over 2.5** — if probability > 65%
-- **Under 3.5** — if Poisson probability > 65% (safer than Under 2.5)
+- **Under 3.5** — if Poisson-derived probability > 65% (safer than Under 2.5)
 - **BTTS** — only if both teams have BTTS rate ≥ 50% and probability > 65%
 
-All tips require confidence ≥ 65%, otherwise no tip is stored for that market.
+All tips are stored with their confidence score displayed — users decide whether to bet based on the confidence level.
 
 ### Feature vector (21 features)
 
@@ -228,6 +238,7 @@ The performance dashboard displays win rate across all settled tips.
 | POST | `/train` | Train ML model on finished match data |
 | POST | `/predict/ml` | ML model prediction (active) |
 | GET | `/ml/status` | ML model training status |
+| GET | `/scrape/team-stats/{league_slug}` | Scrape overall standings from BBC Sport |
 
 ## Covered Leagues
 
