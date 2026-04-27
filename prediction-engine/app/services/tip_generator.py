@@ -10,7 +10,6 @@ that shares the same shape (match_result, over_under, btts keys).
 """
 
 import math
-import math
 from typing import Dict, List, Optional
 
 
@@ -54,7 +53,7 @@ class TipGenerator:
             odds_field_map = {"home_win": "homeWin", "draw": "draw", "away_win": "awayWin"}
             selection_label = label_map[best_outcome]
             matching_vb = [vb for vb in value_bets if vb["market"] == "1X2" and vb["selection"] == selection_label]
-            confidence  = self._calculate_confidence(best_prob, matching_vb)
+            confidence  = self._calculate_confidence(best_prob, matching_vb, match_info)
             if confidence >= self.CONFIDENCE_THRESHOLD:
                 tips.append(self._build_tip(
                     tip_type="1X2",
@@ -76,7 +75,7 @@ class TipGenerator:
                 dc_sel, dc_prob = "2X", two_x_prob
 
             dc_vb      = [vb for vb in value_bets if vb.get("market") == "Double Chance" and vb.get("selection") == dc_sel]
-            confidence = self._calculate_confidence(dc_prob, dc_vb)
+            confidence = self._calculate_confidence(dc_prob, dc_vb, match_info)
             if confidence >= self.CONFIDENCE_THRESHOLD:
                 tips.append(self._build_tip(
                     tip_type="DOUBLE_CHANCE",
@@ -100,7 +99,7 @@ class TipGenerator:
             # Over 2.5
             if over25_prob > 0.65:
                 ou_vb      = [vb for vb in value_bets if vb["selection"] == "Over 2.5"]
-                confidence = self._calculate_confidence(over25_prob, ou_vb)
+                confidence = self._calculate_confidence(over25_prob, ou_vb, match_info)
                 if confidence >= self.CONFIDENCE_THRESHOLD:
                     tips.append(self._build_tip(
                         tip_type="OVER_UNDER",
@@ -115,7 +114,7 @@ class TipGenerator:
 
             # Under 3.5
             if under35_prob > 0.65:
-                confidence = self._calculate_confidence(under35_prob, [])
+                confidence = self._calculate_confidence(under35_prob, [], match_info)
                 if confidence >= self.CONFIDENCE_THRESHOLD:
                     tips.append(self._build_tip(
                         tip_type="OVER_UNDER",
@@ -140,7 +139,7 @@ class TipGenerator:
                 is_yes    = btts_yes_prob >= btts_no_prob
                 selection = "BTTS Yes" if is_yes else "BTTS No"
                 btts_vb   = [vb for vb in value_bets if vb["market"] == "BTTS" and vb["selection"] == ("Yes" if is_yes else "No")]
-                confidence = self._calculate_confidence(best_btts_prob, btts_vb)
+                confidence = self._calculate_confidence(best_btts_prob, btts_vb, match_info)
                 if confidence >= self.CONFIDENCE_THRESHOLD:
                     tips.append(self._build_tip(
                         tip_type="BTTS",
@@ -199,21 +198,64 @@ class TipGenerator:
         self,
         probability: float,
         value_bets: List[Dict],
+        match_info: Optional[Dict] = None,
     ) -> float:
         """
-        Confidence = weighted combination of:
-          • Probability strength (50%) – how far above baseline (33% for 1X2)
-          • Value detected (50%)
+        Confidence = weighted combination of 5 statistical factors (no odds dependency):
+          1. Probability strength  (35%) — how far above baseline
+          2. Form consistency      (25%) — recent form stability
+          3. ELO difference        (20%) — team quality gap
+          4. H2H record            (10%) — historical head-to-head
+          5. Home advantage        (10%) — home team win rate boost
         """
-        prob_score  = min((probability - 0.33) / 0.67, 1.0) * 100
+        # 1. Probability strength — baseline 0.33 for 3-outcome, 0.50 for 2-outcome
+        baseline = 0.50 if probability > 0.60 else 0.33
+        prob_score = min((probability - baseline) / (1.0 - baseline), 1.0) * 100
+        prob_score = max(prob_score, 0)
 
-        if value_bets:
-            best_edge  = max(vb["edge"] for vb in value_bets)
-            value_score = min(best_edge / 0.10, 1.0) * 100
+        mi = match_info or {}
+
+        # 2. Form consistency — reward stable form (WWWWW=100, mixed=low)
+        def form_score(form_str: str) -> float:
+            if not form_str:
+                return 40.0
+            recent = form_str[-5:].upper()
+            wins   = recent.count("W")
+            losses = recent.count("L")
+            draws  = recent.count("D")
+            # Reward consistency: all wins or all losses both = stable prediction
+            dominant = max(wins, losses, draws)
+            return (dominant / max(len(recent), 1)) * 100
+
+        home_form_score = form_score(mi.get("home_form", ""))
+        away_form_score = form_score(mi.get("away_form", ""))
+        form = (home_form_score + away_form_score) / 2
+
+        # 3. ELO difference — bigger gap = more predictable
+        home_elo = mi.get("home_elo") or 1500
+        away_elo = mi.get("away_elo") or 1500
+        elo_diff = abs(home_elo - away_elo)
+        elo_score = min(elo_diff / 300, 1.0) * 100  # 300 pts diff = max score
+
+        # 4. H2H record — one team dominates historically
+        h2h = mi.get("h2h")
+        if h2h and hasattr(h2h, "total_matches") and h2h.total_matches >= 3:
+            dominant_wins = max(h2h.home_wins, h2h.away_wins)
+            h2h_score = (dominant_wins / h2h.total_matches) * 100
         else:
-            value_score = 20  # base score when no odds available
+            h2h_score = 40.0  # neutral when no H2H data
 
-        confidence = prob_score * 0.50 + value_score * 0.50
+        # 5. Home advantage — home teams have ~55% win rate baseline
+        home_win_rate = (mi.get("home_over25_rate") or 0.5)
+        home_adv_score = min(home_win_rate * 100, 100)
+
+        confidence = (
+            prob_score      * 0.35 +
+            form            * 0.25 +
+            elo_score       * 0.20 +
+            h2h_score       * 0.10 +
+            home_adv_score  * 0.10
+        )
         return round(min(max(confidence, 10.0), 98.0), 1)
 
     def _stake_from_confidence(

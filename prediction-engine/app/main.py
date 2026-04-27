@@ -171,10 +171,17 @@ async def predict_match_ml(request: MLPredictRequest):
         value_bets = value_detector.find_value_bets(ml_pred, odds_dicts)
 
         match_info = {
-            "home_team_name": request.home_team_name,
-            "away_team_name": request.away_team_name,
-            "home_form":      request.home_form,
-            "away_form":      request.away_form,
+            "home_team_name":  request.home_team_name,
+            "away_team_name":  request.away_team_name,
+            "home_form":       request.home_form,
+            "away_form":       request.away_form,
+            "home_elo":        request.home_team_stats.elo_rating,
+            "away_elo":        request.away_team_stats.elo_rating,
+            "home_btts_rate":  request.home_team_stats.btts_rate,
+            "away_btts_rate":  request.away_team_stats.btts_rate,
+            "home_over25_rate": request.home_team_stats.over25_rate,
+            "away_over25_rate": request.away_team_stats.over25_rate,
+            "h2h":             request.h2h,
         }
         tips = tip_generator.generate_tips(
             match_info=match_info,
