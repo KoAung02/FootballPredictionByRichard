@@ -24,6 +24,7 @@ const NAME_OVERRIDES: Record<string, string> = {
   "juventus":         "juventus fc",
   "roma":             "as roma",
   "bayer leverkusen": "bayer 04 leverkusen",
+  "bayern munich":    "fc bayern munchen",
 };
 
 function nameMatch(bbcName: string, dbName: string): boolean {
@@ -62,11 +63,48 @@ export async function fetchTeamStatsJob(): Promise<TeamStatsJobResult[]> {
       const leagueRecord = await prisma.league.findUnique({ where: { apiFootballId: league.id } });
       if (!leagueRecord) continue;
 
-      // ── 1. BBC Sport overall stats ──────────────────────────────────────
+      // ── 1. BBC Sport overall stats (fallback to match history for UCL) ────
       const res  = await fetch(`${PREDICTION_ENGINE_URL}/scrape/team-stats/${league.slug}`);
       if (!res.ok) throw new Error(`BBC scrape failed: ${res.status}`);
-      const json = await res.json() as { ok: boolean; data: Record<string, number | string>[] };
+      const json = await res.json() as { ok: boolean; data: Record<string, number | string>[]; teams: number };
       const bbcData = json.data;
+
+      // If BBC returns no data (e.g. UCL knockout format), compute from match history
+      if (bbcData.length === 0) {
+        const leagueTeams = await prisma.team.findMany({ where: { leagueId: leagueRecord.id } });
+        const allFinished = await prisma.match.findMany({
+          where: { leagueId: leagueRecord.id, status: "FINISHED", homeGoals: { not: null }, awayGoals: { not: null } },
+          orderBy: { matchDate: "desc" },
+        });
+        for (const team of leagueTeams) {
+          const hm = allFinished.filter((m) => m.homeTeamId === team.id);
+          const am = allFinished.filter((m) => m.awayTeamId === team.id);
+          const all = [...hm.map((m) => ({ ...m, isHome: true as const })), ...am.map((m) => ({ ...m, isHome: false as const }))];
+          if (all.length === 0) continue;
+          let wins = 0, draws = 0, losses = 0, gf = 0, ga = 0, hw = 0, hd = 0, hl = 0, hgf = 0, hga = 0, aw = 0, ad = 0, al = 0, agf = 0, aga = 0, btts = 0, over25 = 0;
+          for (const m of all) {
+            const tgf = m.isHome ? m.homeGoals! : m.awayGoals!;
+            const tga = m.isHome ? m.awayGoals! : m.homeGoals!;
+            gf += tgf; ga += tga;
+            if (tgf > tga) wins++; else if (tgf < tga) losses++; else draws++;
+            if (tgf > 0 && tga > 0) btts++;
+            if (tgf + tga > 2) over25++;
+            if (m.isHome) { hgf += tgf; hga += tga; if (tgf > tga) hw++; else if (tgf < tga) hl++; else hd++; }
+            else { agf += tgf; aga += tga; if (tgf > tga) aw++; else if (tgf < tga) al++; else ad++; }
+          }
+          const mp = all.length;
+          const form = all.slice(0, 5).map((m) => { const tgf = m.isHome ? m.homeGoals! : m.awayGoals!; const tga = m.isHome ? m.awayGoals! : m.homeGoals!; return tgf > tga ? "W" : tgf < tga ? "L" : "D"; }).join("");
+          const data = { teamId: team.id, season: CURRENT_SEASON, matchesPlayed: mp, wins, draws, losses, goalsFor: gf, goalsAgainst: ga, cleanSheets: 0, homeWins: hw, homeDraws: hd, homeLosses: hl, homeGoalsFor: hgf, homeGoalsAgainst: hga, awayWins: aw, awayDraws: ad, awayLosses: al, awayGoalsFor: agf, awayGoalsAgainst: aga, form, bttsRate: mp > 0 ? btts / mp : null, over25Rate: mp > 0 ? over25 / mp : null };
+          await prisma.teamStats.upsert({ where: { teamId_season: { teamId: team.id, season: CURRENT_SEASON } }, update: data, create: data });
+          upserted++;
+        }
+        const summary = { league: league.name, teams: leagueTeams.length, upserted, skipped: 0 };
+        await setCache(cacheKey, summary, CacheTTL.teamStats);
+        results.push(summary);
+        console.log(`[team-stats] ${league.name}: computed from match history upserted=${upserted}`);
+        await sleep(500);
+        continue;
+      }
 
       // ── 2. Match history for home/away splits ────────────────────────────
       const finishedMatches = await prisma.match.findMany({
