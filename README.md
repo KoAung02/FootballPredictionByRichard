@@ -4,7 +4,7 @@ A full-stack football betting intelligence platform that combines statistical mo
 
 ## Overview
 
-FootballEdge fetches live fixture data, team statistics, and bookmaker odds via external APIs, then runs them through an ML prediction engine to surface high-confidence tips with value ratings. Tips cover match result (1X2 or double chance) and Over/Under 2.5 goals markets across the top European leagues. A performance dashboard tracks win rate across all settled tips.
+FootballEdge fetches live fixture data, team statistics, and bookmaker odds via external APIs, then runs them through an ML prediction engine to surface high-confidence tips with value ratings. Tips cover match result (1X2 or double chance), Over 2.5, Under 3.5, and BTTS markets across the top European leagues. A performance dashboard tracks win rate across all settled tips.
 
 ## Architecture
 
@@ -177,13 +177,16 @@ Each classifier uses `n_estimators=100, max_depth=3, learning_rate=0.1`. Predict
 
 The engine uses a **conservative single-pick** approach — one best tip per match, selected by priority order. A tip is only generated if confidence ≥ 65%, otherwise the match is skipped (NO BET).
 
-**Priority order:**
-1. **Double Chance** — preferred when draw probability ≥ 22% (1X or 2X)
-2. **Over/Under 2.5** — when either side exceeds 65% probability and goal trends are stable
-3. **BTTS** — only when both teams have a BTTS rate ≥ 50% and probability exceeds 65%
-4. **1X2** — only when a single outcome exceeds 70% probability
+**Match result tip (always one per match):**
+- **1X2** if best outcome probability > 70%
+- **Double Chance** otherwise — 1X if (home + draw) > (away + draw), else 2X
 
-If multiple candidates qualify, the highest-priority market wins. If none meet the threshold, no tip is stored.
+**Additional tips (generated independently if conditions met):**
+- **Over 2.5** — if probability > 65%
+- **Under 3.5** — if Poisson probability > 65% (safer than Under 2.5)
+- **BTTS** — only if both teams have BTTS rate ≥ 50% and probability > 65%
+
+All tips require confidence ≥ 65%, otherwise no tip is stored for that market.
 
 ### Feature vector (21 features)
 

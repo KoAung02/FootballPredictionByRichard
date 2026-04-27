@@ -9,6 +9,8 @@ Note: In Phase 2 we use Poisson as the sole model. The ensemble combiner
 that shares the same shape (match_result, over_under, btts keys).
 """
 
+import math
+import math
 from typing import Dict, List, Optional
 
 
@@ -87,28 +89,43 @@ class TipGenerator:
                     estimated_odds=round(1.0 / dc_prob, 2) if dc_prob > 0 else None,
                 ))
 
-        # ── Over / Under 2.5 ─────────────────────────────────────────────────
+        # ── Over 2.5 or Under 3.5 ────────────────────────────────────────────
         if ou.get("over_2.5") is not None:
-            over_prob  = ou["over_2.5"]
-            under_prob = ou["under_2.5"]
-            best_ou_prob = max(over_prob, under_prob)
+            over25_prob = ou["over_2.5"]
 
-            if best_ou_prob > 0.65:
-                is_over       = over_prob >= under_prob
-                selection     = "Over 2.5" if is_over else "Under 2.5"
-                ou_vb         = [vb for vb in value_bets if vb["selection"] == selection]
-                confidence    = self._calculate_confidence(best_ou_prob, ou_vb)
-                ou_odds_field = "overOdds" if is_over else "underOdds"
+            # Under 3.5: P(goals <= 3) via Poisson from expected goals
+            xg_total    = eg.get("total", 0) or 0
+            under35_prob = self._poisson_under_prob(xg_total, 3) if xg_total > 0 else 0.0
+
+            # Over 2.5
+            if over25_prob > 0.65:
+                ou_vb      = [vb for vb in value_bets if vb["selection"] == "Over 2.5"]
+                confidence = self._calculate_confidence(over25_prob, ou_vb)
                 if confidence >= self.CONFIDENCE_THRESHOLD:
                     tips.append(self._build_tip(
                         tip_type="OVER_UNDER",
-                        prediction=selection,
+                        prediction="Over 2.5",
                         confidence=confidence,
-                        calc_prob=best_ou_prob,
+                        calc_prob=over25_prob,
                         value_bet=ou_vb[0] if ou_vb else None,
-                        reasoning=self._build_ou_reasoning(selection, match_info, eg),
+                        reasoning=self._build_ou_reasoning("Over 2.5", match_info, eg),
                         model_breakdown={"poisson": ou},
-                        estimated_odds=self._best_odds(odds_data, ou_odds_field),
+                        estimated_odds=self._best_odds(odds_data, "overOdds"),
+                    ))
+
+            # Under 3.5
+            if under35_prob > 0.65:
+                confidence = self._calculate_confidence(under35_prob, [])
+                if confidence >= self.CONFIDENCE_THRESHOLD:
+                    tips.append(self._build_tip(
+                        tip_type="OVER_UNDER",
+                        prediction="Under 3.5",
+                        confidence=confidence,
+                        calc_prob=under35_prob,
+                        value_bet=None,
+                        reasoning=self._build_ou_reasoning("Under 3.5", match_info, eg),
+                        model_breakdown={"poisson": ou},
+                        estimated_odds=None,
                     ))
 
         # ── BTTS (only if both teams consistently score) ──────────────────────
@@ -138,6 +155,13 @@ class TipGenerator:
         return tips
 
     # ── Private helpers ───────────────────────────────────────────────────────
+
+    def _poisson_under_prob(self, xg_total: float, threshold: int) -> float:
+        """P(goals <= threshold) using Poisson distribution."""
+        return sum(
+            math.exp(-xg_total) * (xg_total ** k) / math.factorial(k)
+            for k in range(threshold + 1)
+        )
 
     def _best_odds(self, odds_data: List[Dict], field: str) -> Optional[float]:
         """Return the highest decimal odds across all bookmakers for a given field."""
@@ -243,12 +267,16 @@ class TipGenerator:
         total = eg.get("total", "N/A")
         reasons: List[str] = []
 
-        if "Over" in selection:
+        if "Over 2.5" in selection:
             if total and float(total) > 0:
                 reasons.append(f"Richard expects {total} total goals, above the 2.5 threshold.")
             reasons.append(
                 f"Both {home} and {away} show attacking output that suggests an open game."
             )
+        elif "Under 3.5" in selection:
+            if total and float(total) > 0:
+                reasons.append(f"Richard expects {total} total goals, below the 3.5 threshold.")
+            reasons.append("Match is unlikely to produce 4 or more goals based on both teams' defensive records.")
         else:
             if total and float(total) > 0:
                 reasons.append(f"Richard expects {total} total goals, below the 2.5 threshold.")
