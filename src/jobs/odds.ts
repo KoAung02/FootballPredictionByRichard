@@ -73,15 +73,6 @@ async function resolveMatchId(
   return null;
 }
 
-// ── League-specific team filters ──────────────────────────────────────────────
-const SERIE_A_ODDS_TEAMS = new Set([
-  "FC Internazionale Milano",
-  "AC Milan",
-  "SSC Napoli",
-  "AS Roma",
-  "Juventus FC",
-]);
-
 // ── Job ────────────────────────────────────────────────────────────────────────
 
 export interface OddsJobResult {
@@ -136,12 +127,6 @@ export async function fetchOddsJob(): Promise<OddsJobResult[]> {
     let oddsUpserted = 0;
 
     for (const event of events) {
-      if (league.slug === "serie-a") {
-        const homeMatch = [...SERIE_A_ODDS_TEAMS].some(t => teamsMatch(event.home_team, t));
-        const awayMatch = [...SERIE_A_ODDS_TEAMS].some(t => teamsMatch(event.away_team, t));
-        if (!homeMatch && !awayMatch) continue;
-      }
-
       const matchId = await resolveMatchId(event, league.id);
 
       if (!matchId) {

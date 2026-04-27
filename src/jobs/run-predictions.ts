@@ -24,31 +24,7 @@ import {
   type H2HInput,
 } from "@/services/prediction-engine";
 
-// ── League-specific team filters ──────────────────────────────────────────────
-const LA_LIGA_PREDICT_TEAMS = new Set([
-  "Real Madrid CF",
-  "FC Barcelona",
-  "Club Atlético de Madrid",
-  "Villarreal CF",
-]);
-
-const SERIE_A_PREDICT_TEAMS = new Set([
-  "FC Internazionale Milano",
-  "AC Milan",
-  "SSC Napoli",
-  "AS Roma",
-  "Juventus FC",
-]);
-
-function shouldPredict(leagueSlug: string, homeTeamName: string, awayTeamName: string): boolean {
-  if (leagueSlug === "la-liga") {
-    return LA_LIGA_PREDICT_TEAMS.has(homeTeamName) || LA_LIGA_PREDICT_TEAMS.has(awayTeamName);
-  }
-  if (leagueSlug === "serie-a") {
-    return SERIE_A_PREDICT_TEAMS.has(homeTeamName) || SERIE_A_PREDICT_TEAMS.has(awayTeamName);
-  }
-  return true;
-}
+const MIN_CONFIDENCE = 65;
 
 // ── DB → engine type mappers ───────────────────────────────────────────────────
 
@@ -236,6 +212,7 @@ async function getH2H(
 async function storeTips(matchId: number, response: MLPredictResponse): Promise<number> {
   let stored = 0;
   for (const tip of response.tips) {
+    if (tip.confidence < MIN_CONFIDENCE) continue;
     await prisma.tip.create({
       data: {
         matchId,
@@ -297,9 +274,6 @@ export async function runPredictionsJob(): Promise<PredictionsJobResult> {
   let errors           = 0;
 
   for (const match of matches) {
-    if (!shouldPredict(match.league.slug, match.homeTeam.name, match.awayTeam.name)) {
-      continue;
-    }
 
     // Always refresh pending tips with latest model output
     if (match.tips.length > 0) {
