@@ -15,8 +15,19 @@ import { getCache, setCache } from "@/lib/redis";
 
 const PREDICTION_ENGINE_URL = process.env.PREDICTION_ENGINE_URL ?? "http://localhost:8000";
 
+const NAME_OVERRIDES: Record<string, string> = {
+  "atletico madrid":  "club atletico de madrid",
+  "celta vigo":       "rc celta de vigo",
+  "inter milan":      "fc internazionale milano",
+  "ac milan":         "ac milan",
+  "napoli":           "ssc napoli",
+  "juventus":         "juventus fc",
+  "roma":             "as roma",
+  "bayer leverkusen": "bayer 04 leverkusen",
+};
+
 function nameMatch(bbcName: string, dbName: string): boolean {
-  const a = bbcName.toLowerCase().replace(/[^a-z0-9 ]/g, "").trim();
+  const a = (NAME_OVERRIDES[bbcName.toLowerCase()] ?? bbcName.toLowerCase()).replace(/[^a-z0-9 ]/g, "").trim();
   const b = dbName.toLowerCase().replace(/[^a-z0-9 ]/g, "").trim();
   if (a === b) return true;
   if (a.includes(b) || b.includes(a)) return true;
