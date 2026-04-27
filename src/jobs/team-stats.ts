@@ -24,12 +24,20 @@ const NAME_OVERRIDES: Record<string, string> = {
   "juventus":         "juventus fc",
   "roma":             "as roma",
   "bayer leverkusen": "bayer 04 leverkusen",
-  "bayern munich":    "fc bayern munchen",
+  "bayern munich":    "FC Bayern München",
 };
 
+function normalize(name: string): string {
+  return name.toLowerCase()
+    .replace(/ü/g, "u").replace(/ö/g, "o").replace(/ä/g, "a")
+    .replace(/é/g, "e").replace(/è/g, "e").replace(/ñ/g, "n")
+    .replace(/[^a-z0-9 ]/g, "").trim();
+}
+
 function nameMatch(bbcName: string, dbName: string): boolean {
-  const a = (NAME_OVERRIDES[bbcName.toLowerCase()] ?? bbcName.toLowerCase()).replace(/[^a-z0-9 ]/g, "").trim();
-  const b = dbName.toLowerCase().replace(/[^a-z0-9 ]/g, "").trim();
+  const raw = NAME_OVERRIDES[bbcName.toLowerCase()] ?? bbcName;
+  const a = normalize(raw);
+  const b = normalize(dbName);
   if (a === b) return true;
   if (a.includes(b) || b.includes(a)) return true;
   return a.split(" ")[0] === b.split(" ")[0] && a.split(" ")[0].length > 2;
