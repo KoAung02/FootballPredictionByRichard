@@ -25,16 +25,17 @@ class TipGenerator:
         odds_data: List[Dict] = [],
     ) -> List[Dict]:
         """
-        Conservative tip selection — one best pick per match.
+        Conservative tip selection — one or more tips per match.
 
-        Priority order:
-          1. Double Chance (safest — used when draw risk exists)
-          2. Over/Under 2.5 (if goal trend strong, prob > 0.65)
-          3. BTTS (only if both teams consistently score, prob > 0.65)
-          4. 1X2 (only if single outcome prob > 0.70)
+        Always generates exactly one match result tip:
+          - 1X2 if best outcome prob > 0.70
+          - Otherwise Double Chance: 1X if (home+draw) > (away+draw), else 2X
 
-        Returns empty list (NO BET) if nothing meets the confidence threshold.
+        Additionally generates:
+          - Over/Under 2.5 if prob > 0.65
+          - BTTS if both teams BTTS rate >= 50% and prob > 0.65
         """
+        tips: List[Dict] = []
         mr  = prediction["match_result"]
         ou  = prediction.get("over_under", {})
         bts = prediction.get("btts", {})
@@ -45,20 +46,37 @@ class TipGenerator:
         away_prob = mr.get("away_win", 0)
         best_outcome, best_prob = max(mr.items(), key=lambda x: x[1])
 
-        candidates: List[Dict] = []
-
-        # ── 1. Double Chance ─────────────────────────────────────────────────
-        if draw_prob >= 0.22 and best_outcome != "draw":
-            if best_outcome == "home_win":
-                dc_sel, dc_prob = "1X", home_prob + draw_prob
+        # ── Match result: 1X2 or Double Chance ───────────────────────────────
+        if best_prob > 0.70:
+            label_map      = {"home_win": "Home Win", "draw": "Draw", "away_win": "Away Win"}
+            odds_field_map = {"home_win": "homeWin", "draw": "draw", "away_win": "awayWin"}
+            selection_label = label_map[best_outcome]
+            matching_vb = [vb for vb in value_bets if vb["market"] == "1X2" and vb["selection"] == selection_label]
+            confidence  = self._calculate_confidence(best_prob, matching_vb)
+            if confidence >= self.CONFIDENCE_THRESHOLD:
+                tips.append(self._build_tip(
+                    tip_type="1X2",
+                    prediction=selection_label,
+                    confidence=confidence,
+                    calc_prob=best_prob,
+                    value_bet=matching_vb[0] if matching_vb else None,
+                    reasoning=self._build_1x2_reasoning(best_outcome, match_info, eg, prediction),
+                    model_breakdown={"match_result": mr},
+                    estimated_odds=self._best_odds(odds_data, odds_field_map[best_outcome]),
+                ))
+        else:
+            # Double Chance: compare combined probabilities
+            one_x_prob = home_prob + draw_prob   # 1X
+            two_x_prob = away_prob + draw_prob   # 2X
+            if one_x_prob >= two_x_prob:
+                dc_sel, dc_prob = "1X", one_x_prob
             else:
-                dc_sel, dc_prob = "2X", away_prob + draw_prob
+                dc_sel, dc_prob = "2X", two_x_prob
 
             dc_vb      = [vb for vb in value_bets if vb.get("market") == "Double Chance" and vb.get("selection") == dc_sel]
             confidence = self._calculate_confidence(dc_prob, dc_vb)
-            candidates.append({
-                "priority": 1,
-                "tip": self._build_tip(
+            if confidence >= self.CONFIDENCE_THRESHOLD:
+                tips.append(self._build_tip(
                     tip_type="DOUBLE_CHANCE",
                     prediction=dc_sel,
                     confidence=confidence,
@@ -67,11 +85,9 @@ class TipGenerator:
                     reasoning=self._build_dc_reasoning(dc_sel, match_info, home_prob, draw_prob, away_prob),
                     model_breakdown={"match_result": mr},
                     estimated_odds=round(1.0 / dc_prob, 2) if dc_prob > 0 else None,
-                ),
-                "confidence": confidence,
-            })
+                ))
 
-        # ── 2. Over / Under 2.5 ──────────────────────────────────────────────
+        # ── Over / Under 2.5 ─────────────────────────────────────────────────
         if ou.get("over_2.5") is not None:
             over_prob  = ou["over_2.5"]
             under_prob = ou["under_2.5"]
@@ -83,9 +99,8 @@ class TipGenerator:
                 ou_vb         = [vb for vb in value_bets if vb["selection"] == selection]
                 confidence    = self._calculate_confidence(best_ou_prob, ou_vb)
                 ou_odds_field = "overOdds" if is_over else "underOdds"
-                candidates.append({
-                    "priority": 2,
-                    "tip": self._build_tip(
+                if confidence >= self.CONFIDENCE_THRESHOLD:
+                    tips.append(self._build_tip(
                         tip_type="OVER_UNDER",
                         prediction=selection,
                         confidence=confidence,
@@ -94,27 +109,23 @@ class TipGenerator:
                         reasoning=self._build_ou_reasoning(selection, match_info, eg),
                         model_breakdown={"poisson": ou},
                         estimated_odds=self._best_odds(odds_data, ou_odds_field),
-                    ),
-                    "confidence": confidence,
-                })
+                    ))
 
-        # ── 3. BTTS (only if both teams consistently score) ──────────────────
+        # ── BTTS (only if both teams consistently score) ──────────────────────
         if bts.get("yes") is not None:
-            btts_yes_prob = bts["yes"]
-            btts_no_prob  = bts["no"]
+            btts_yes_prob  = bts["yes"]
+            btts_no_prob   = bts["no"]
             best_btts_prob = max(btts_yes_prob, btts_no_prob)
-            home_btts = match_info.get("home_btts_rate", 0) or 0
-            away_btts = match_info.get("away_btts_rate", 0) or 0
-            both_consistent = home_btts >= 0.5 and away_btts >= 0.5
+            home_btts      = match_info.get("home_btts_rate", 0) or 0
+            away_btts      = match_info.get("away_btts_rate", 0) or 0
 
-            if best_btts_prob > 0.65 and both_consistent:
+            if best_btts_prob > 0.65 and home_btts >= 0.5 and away_btts >= 0.5:
                 is_yes    = btts_yes_prob >= btts_no_prob
                 selection = "BTTS Yes" if is_yes else "BTTS No"
                 btts_vb   = [vb for vb in value_bets if vb["market"] == "BTTS" and vb["selection"] == ("Yes" if is_yes else "No")]
                 confidence = self._calculate_confidence(best_btts_prob, btts_vb)
-                candidates.append({
-                    "priority": 3,
-                    "tip": self._build_tip(
+                if confidence >= self.CONFIDENCE_THRESHOLD:
+                    tips.append(self._build_tip(
                         tip_type="BTTS",
                         prediction=selection,
                         confidence=confidence,
@@ -122,39 +133,9 @@ class TipGenerator:
                         value_bet=btts_vb[0] if btts_vb else None,
                         reasoning=self._build_btts_reasoning(selection, match_info),
                         model_breakdown={"poisson": bts},
-                    ),
-                    "confidence": confidence,
-                })
+                    ))
 
-        # ── 4. 1X2 (only if probability > 0.70) ─────────────────────────────
-        if best_prob > 0.70:
-            label_map      = {"home_win": "Home Win", "draw": "Draw", "away_win": "Away Win"}
-            odds_field_map = {"home_win": "homeWin", "draw": "draw", "away_win": "awayWin"}
-            selection_label = label_map[best_outcome]
-            matching_vb = [vb for vb in value_bets if vb["market"] == "1X2" and vb["selection"] == selection_label]
-            confidence  = self._calculate_confidence(best_prob, matching_vb)
-            candidates.append({
-                "priority": 4,
-                "tip": self._build_tip(
-                    tip_type="1X2",
-                    prediction=selection_label,
-                    confidence=confidence,
-                    calc_prob=best_prob,
-                    value_bet=matching_vb[0] if matching_vb else None,
-                    reasoning=self._build_1x2_reasoning(best_outcome, match_info, eg, prediction),
-                    model_breakdown={"match_result": mr},
-                    estimated_odds=self._best_odds(odds_data, odds_field_map[best_outcome]),
-                ),
-                "confidence": confidence,
-            })
-
-        # ── Select best candidate: highest confidence, lowest priority number ─
-        qualified = [c for c in candidates if c["confidence"] >= self.CONFIDENCE_THRESHOLD]
-        if not qualified:
-            return []  # NO BET
-
-        best = max(qualified, key=lambda c: (-c["priority"], c["confidence"]))
-        return [best["tip"]]
+        return tips
 
     # ── Private helpers ───────────────────────────────────────────────────────
 
