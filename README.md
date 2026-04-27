@@ -175,14 +175,15 @@ Each classifier uses `n_estimators=100, max_depth=3, learning_rate=0.1`. Predict
 
 ### Tip selection logic
 
-For the match result market, the engine picks between an outright result and a double chance based on draw risk:
+The engine uses a **conservative single-pick** approach — one best tip per match, selected by priority order. A tip is only generated if confidence ≥ 65%, otherwise the match is skipped (NO BET).
 
-- Draw probability **≥ 22%** + home favourite → recommend **2X** (away or draw)
-- Draw probability **≥ 22%** + away favourite → recommend **1X** (home or draw)
-- Draw probability **< 22%** → recommend outright **Home Win / Away Win**
-- Draw is the single most likely outcome → recommend **Draw**
+**Priority order:**
+1. **Double Chance** — preferred when draw probability ≥ 22% (1X or 2X)
+2. **Over/Under 2.5** — when either side exceeds 65% probability and goal trends are stable
+3. **BTTS** — only when both teams have a BTTS rate ≥ 50% and probability exceeds 65%
+4. **1X2** — only when a single outcome exceeds 70% probability
 
-Over/Under 2.5 is generated when either side exceeds 65% probability.
+If multiple candidates qualify, the highest-priority market wins. If none meet the threshold, no tip is stored.
 
 ### Feature vector (21 features)
 
