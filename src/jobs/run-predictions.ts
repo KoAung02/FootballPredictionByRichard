@@ -207,10 +207,12 @@ async function getH2H(
 
 // ── Tip storage ────────────────────────────────────────────────────────────────
 
+const MIN_CONFIDENCE = 65;
+
 async function storeTips(matchId: number, response: MLPredictResponse): Promise<number> {
   let stored = 0;
   for (const tip of response.tips) {
-
+    if (tip.confidence < MIN_CONFIDENCE) continue;
     await prisma.tip.create({
       data: {
         matchId,
