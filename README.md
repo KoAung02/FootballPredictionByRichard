@@ -276,15 +276,16 @@ footballedge/
 │   ├── app/
 │   │   ├── main.py
 │   │   ├── models/
-│   │   │   ├── ml_model.py   # Logistic Regression classifiers
+│   │   │   ├── ml_model.py   # XGBoost classifiers (result, O/U, BTTS)
 │   │   │   └── poisson.py    # Legacy Poisson model
 │   │   ├── schemas/
 │   │   │   ├── ml_schemas.py
 │   │   │   └── models.py
 │   │   └── services/
 │   │       ├── feature_engineer.py  # 21-feature vector builder
-│   │       ├── tip_generator.py     # Tip selection + reasoning
-│   │       └── value_detector.py    # Edge / value bet detection
+│   │       ├── tip_generator.py     # Conservative tip selection + confidence scoring
+│   │       ├── value_detector.py    # Edge / value bet detection
+│   │       └── bbc_sport.py         # BBC Sport standings scraper
 │   └── requirements.txt
 ├── prisma/
 │   ├── schema.prisma
