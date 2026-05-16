@@ -96,7 +96,7 @@ async def scrape_standings(league_slug: str) -> List[Dict]:
         response = await client.get(url)
         response.raise_for_status()
 
-    soup = BeautifulSoup(response.text, "lxml")
+    soup = BeautifulSoup(response.text, "html.parser")
     data = _parse_table(soup)
 
     if not data:

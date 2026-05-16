@@ -185,7 +185,7 @@ async def scrape_team_stats(league_slug: str) -> List[Dict]:
         response = await client.get(url)
         response.raise_for_status()
 
-    soup = BeautifulSoup(response.text, "lxml")
+    soup = BeautifulSoup(response.text, "html.parser")
 
     # FBref home/away table id pattern: results{year}_{comp}_{n}_homeaway
     table = _parse_table(soup, r"results.*homeaway")
